@@ -1,2 +1,3 @@
-# archivist
-Tools for offline data storage compatible with the Librarian
+# Archivist
+
+Tools for offline data storage compatible with the Librarian.
