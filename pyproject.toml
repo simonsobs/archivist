@@ -15,6 +15,11 @@ classifiers = [
 ]
 dependencies = ["numpy"]
 
+[project.optional-dependencies]
+dev = [
+    "pytest"
+]
+
 [project.urls]
 Homepage = "https://github.com/simonsobs/archivist"
 
