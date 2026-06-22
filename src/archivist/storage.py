@@ -4,8 +4,8 @@
 
 
 class Storage(object):
-    """Base class representing an archive storage system.
-    """
+    """Base class representing an archive storage system."""
+
     def __init__(self):
         pass
 
@@ -61,6 +61,7 @@ class StorageDisk(Storage):
         directory (str):  The top-level location for storing archives.
 
     """
+
     def __init__(self, directory):
         self._directory = directory
         super().__init__()
@@ -75,8 +76,8 @@ class StorageDisk(Storage):
 
 
 class StorageHPSS(Storage):
-    """Store archives to HPSS tapes.
-    """
+    """Store archives to HPSS tapes."""
+
     def __init__(self):
         super().__init__()
 

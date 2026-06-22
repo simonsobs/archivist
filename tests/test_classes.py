@@ -4,15 +4,8 @@
 """Test package imports."""
 
 import archivist
-from archivist import __version__ as pkg_version
-
-from archivist import (
-    Archive,
-    RegistrySqlite,
-    RegistryLibrarian,
-    StorageDisk,
-    StorageHPSS,
-)
+from archivist import Archive, RegistryLibrarian, RegistrySqlite, StorageDisk, StorageHPSS
+from archivist import _version as pkg_version
 
 
 def test_construction():
@@ -21,4 +14,3 @@ def test_construction():
     reg_sql = RegistrySqlite()
     store_disk = StorageDisk(".")
     store_hpss = StorageHPSS()
-

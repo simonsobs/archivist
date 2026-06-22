@@ -4,9 +4,8 @@
 
 
 class Registry(object):
-    """Base class representing a registry of archives.
+    """Base class representing a registry of archives."""
 
-    """
     def __init__(self):
         pass
 
@@ -44,6 +43,7 @@ class Registry(object):
 
 class RegistrySqlite(Registry):
     """Simple class which registers archives in an SQLite DB."""
+
     def __init__(self):
         super().__init__()
 
@@ -56,6 +56,7 @@ class RegistrySqlite(Registry):
 
 class RegistryLibrarian(Registry):
     """Store archive metadata with with the librarian."""
+
     def __init__(self):
         super().__init__()
 

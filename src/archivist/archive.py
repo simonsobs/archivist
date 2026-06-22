@@ -20,6 +20,7 @@ class Archive(object):
             for all objects.
 
     """
+
     def __init__(self, manifest=None, paths=None, root=None):
         pass
 
@@ -34,4 +35,3 @@ class Archive(object):
     @property
     def checksum(self):
         pass
-
