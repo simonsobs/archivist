@@ -33,34 +33,27 @@ class ManifestEntry(BaseModel):
 
 
 class ManifestRequest(BaseModel):
-    store_name: str
-    "The name of the store to get the manifest for."
-
-    create_outgoing_transfers: bool = False
-    "Whether to create outgoing transfers for the files in the manifest."
-
-    destination_librarian: str = ""
-    "The name of the librarian to send the files to, if create_outgoing_transfers is true."
-
-    disable_store: bool = False
-    "Whether to disable the store after creating the outgoing transfers."
-
-    mark_local_instances_as_unavailable: bool = False
-    "Mark the local instances as unavailable after creating the outgoing transfers."
-
-
-class ManifestResponse(BaseModel):
     librarian_name: str
     "The name of the librarian that generated this manifest."
-
-    store_name: str
-    "The name of the store."
 
     store_files: list[ManifestEntry]
     "The files on the store."
 
 
+class ManifestResponse(BaseModel):
+    manifest_id: str
+    "The ID of the manifest."
+
+
+class ManifestFailedResponse(BaseModel):
+    error: str
+    "The error message indicating why the manifest request failed."
+
+
 class Archive(BaseModel):
+    manifest_id: str
+    "The ID of the manifest associated with this archive."
+
     manifest: str
     "Path to a manifest file listing the files / directories contained in the archive."
 
