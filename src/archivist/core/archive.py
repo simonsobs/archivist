@@ -2,6 +2,8 @@
 # Full license can be found in the top level "LICENSE" file.
 """Classes for working with archives."""
 
+import subprocess
+
 
 class Archive(object):
     """Class representing a single archive in a storage system.
@@ -21,17 +23,32 @@ class Archive(object):
 
     """
 
-    def __init__(self, manifest=None, paths=None, root=None):
-        pass
+    def __init__(self, manifest=None, paths=None, root=None, type=None):
+        self._manifest = manifest
+        self._paths = paths
+        self._root = root
+        self._type = type
+        self._checksum = None  # Placeholder for checksum value
 
     @property
     def paths(self):
-        pass
+        return self._paths
 
     @property
     def root(self):
-        pass
+        return self._root
 
     @property
     def checksum(self):
-        pass
+        """Return the checksum of the archive."""
+
+    def create_archive(self):
+        """Create the archive based on the manifest or paths."""
+        # Placeholder for archive creation logic
+        if self._type == "posix":
+            # Implement logic for creating a POSIX archive
+            pass
+        elif self._type == "hpss":
+            # Implement logic for creating an HPSS archive
+            # Call subprocess to create the archive using HPSS commands
+            pass

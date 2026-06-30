@@ -14,10 +14,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "click>=8.1.8",
-    "fastapi>=0.128.8",
+    "click",
+    "fastapi",
     "numpy",
-    "pydantic>=2.13.4",
+    "pydantic",
+    "pydantic-settings",
+    "sqlalchemy",
+    "sqlalchemy-utils",
+    "loguru",
 ]
 
 [project.urls]
