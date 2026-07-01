@@ -1,8 +1,7 @@
+import os
 import sys
 
 import click
-
-import Archivist
 
 
 @click.group()
@@ -19,8 +18,9 @@ def main(ctx, config):
         click.echo("Archivist requires a configuration file", err=True)
         click.echo("See readme for more information", err=True)
         sys.exit(1)
+
+    os.environ["ARCHIVIST_CONFIG_PATH"] = config
     ctx.ensure_object(dict)
-    ctx.obj["archivist"] = Archivist(config)
 
 
 @main.command()
@@ -58,4 +58,15 @@ def extract(ctx, archive, dest_path):
 @click.pass_context
 def start_server(ctx):
     """Command to check the status of the archivist."""
-    pass
+
+    import uvicorn
+
+    from .settings import server_settings
+
+    uvicorn.run(
+        "archivist.server:main",
+        host=server_settings.host,
+        port=server_settings.port,
+        log_level=server_settings.log_level.lower(),
+        factory=True,
+    )

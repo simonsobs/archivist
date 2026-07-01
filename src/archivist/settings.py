@@ -126,7 +126,7 @@ def get_settings() -> "Settings":
     global _settings
 
     try_paths = [
-        os.environ.get("LIBRARIAN_CONFIG_PATH", None),
+        os.environ.get("ARCHIVIST_CONFIG_PATH", None),
     ]
 
     for path in try_paths:
@@ -150,3 +150,19 @@ def get_settings() -> "Settings":
         raise e
 
     return _settings
+
+
+def __getattr__(name) -> Settings:
+    """
+    Try to load the settings if they haven't been loaded yet.
+    """
+
+    if name == "server_settings":
+        global _settings
+
+        if _settings is not None:
+            return _settings
+
+        return get_settings()
+
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

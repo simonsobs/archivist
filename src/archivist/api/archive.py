@@ -5,7 +5,7 @@ from fastapi import Depends, Response
 
 from archivist.api import router
 from archivist.core.models import Archive, ManifestFailedResponse, ManifestRequest, ManifestResponse
-from archivist.queue import ArchiveQueue, get_queue
+from archivist.queue import ArchiveQueue, get_archive_queue
 from archivist.settings import Settings, get_settings
 
 
@@ -13,7 +13,7 @@ from archivist.settings import Settings, get_settings
 def archive(
     manifest_request: ManifestRequest,
     response: Response,
-    queue: ArchiveQueue = Depends(get_queue),
+    queue: ArchiveQueue = Depends(get_archive_queue),
     settings: Settings = Depends(get_settings),
 ):
     """
