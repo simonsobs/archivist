@@ -1,7 +1,7 @@
-import json
 import uuid
 
 from fastapi import Depends, Response
+from loguru import logger
 
 from archivist.api import router
 from archivist.core.models import Archive, ManifestFailedResponse, ManifestRequest, ManifestResponse
@@ -25,19 +25,26 @@ def archive(
     total_size = sum(entry.size for entry in manifest_request.store_files)
     if total_size > settings.maximal_size_bytes:  # Example size limit of 1GB
         response.status_code = 400
+        logger.error(
+            f"Archiving manifest from librarian '{manifest_request.librarian_name}' failed: total size {total_size} exceeds limit of {settings.maximal_size_bytes} bytes"
+        )
         return ManifestFailedResponse(error="The total size of the files exceeds the allowed limit.")
 
     manifest_id = uuid.uuid4()
 
+    logger.info(
+        f"Archiving manifest {manifest_id} from librarian '{manifest_request.librarian_name}': {len(manifest_request.store_files)} file(s), {total_size} bytes total"
+    )
+
     archive = Archive(
         manifest_id=str(manifest_id),
-        manifest=json.dumps(manifest_request),
+        manifest=manifest_request.model_dump_json(),
         paths=[entry.instance_path for entry in manifest_request.store_files],
         root=settings.storage_root,  # Example root path
     )
 
     # TODO: Add the archive to a queue for processing
-    queue.enqueue_archive(archive)
+    # queue.enqueue_archive(archive)
 
     return ManifestResponse(
         manifest_id=str(manifest_id),

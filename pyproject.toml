@@ -23,6 +23,7 @@ dependencies = [
     "sqlalchemy-utils",
     "loguru",
     "uvicorn",
+    "requests>=2.32.5",
 ]
 
 [project.urls]

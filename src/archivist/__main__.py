@@ -1,7 +1,14 @@
 import os
 import sys
+from datetime import datetime
+from pathlib import Path
 
 import click
+import requests
+
+from archivist.core.models import ManifestEntry, ManifestFailedResponse, ManifestRequest, ManifestResponse
+from archivist.settings import get_settings
+from archivist.utils import _checksum
 
 
 @click.group()
@@ -24,18 +31,82 @@ def main(ctx, config):
 
 
 @main.command()
-@click.option("--source-path", type=str, help="The source path of the file to archive")
+@click.option(
+    "--source-path", type=click.Path(exists=True), required=True, help="The source path of the file to archive"
+)
 @click.option(
     "--dest-path",
-    type=str,
+    type=click.Path(exists=False),
+    required=True,
     help="The destination path where the file should be archived",
 )
+@click.option(
+    "--librarian-name",
+    type=str,
+    required=False,
+    help="The name of the librarian archiving the file",
+    default="librarian",
+)
 @click.pass_context
-def archive(ctx, source_path, dest_path):
+def archive(ctx, source_path, dest_path, librarian_name):
     """Command to archive a file.
-    For example: `archivist archive "--source-path /path/to/source --dest-path /path/to/dest"`
+    For example: `archivist -c config archive "--source-path /path/to/source --dest-path /path/to/dest"`
     """
-    pass
+    # Here you would implement the logic to handle the archiving process
+    # For now, we will just print the source and destination paths
+    click.echo(f"Archiving file from {source_path} to {dest_path}")
+
+    settings = get_settings()
+
+    source_root = Path(source_path)
+    dest_root = Path(dest_path) if dest_path is not None else "source_root"
+
+    if source_root.is_file():
+        files = [source_root]
+        walk_root = source_root.parent
+    else:
+        files = [Path(dirpath) / filename for dirpath, _, filenames in os.walk(source_root) for filename in filenames]
+        walk_root = source_root
+
+    uploader = librarian_name
+    store_files = []
+
+    for file_path in files:
+        stat = file_path.stat()
+        relative_path = file_path.relative_to(walk_root)
+
+        store_files.append(
+            ManifestEntry(
+                name=file_path.name,
+                create_time=datetime.fromtimestamp(stat.st_ctime),
+                size=stat.st_size,
+                checksum=_checksum(file_path),
+                uploader=uploader,
+                source=str(source_root),
+                instance_path=str(dest_root / relative_path),
+                instance_create_time=datetime.now(),
+                instance_available=True,
+                outgoing_transfer_id=0,
+            )
+        )
+
+    manifest_request = ManifestRequest(librarian_name=librarian_name, store_files=store_files)
+    try:
+        req = requests.post(
+            f"http://{settings.host}:{settings.port}/api/v1/archive", json=manifest_request.model_dump(mode="json")
+        )
+    except (TimeoutError, requests.exceptions.ConnectionError) as ex:
+        raise ex
+
+    click.echo(f"Status code: {req.status_code}")
+
+    if req.status_code == 200:
+        response = ManifestResponse.model_validate(req.json())
+        click.echo(f"Archive succeeded, manifest_id={response.manifest_id}")
+    else:
+        response = ManifestFailedResponse.model_validate(req.json())
+        click.secho("[ERROR]", fg="red", nl=False, err=True)
+        click.echo(f" Archive failed: {response.error}", err=True)
 
 
 @main.command()
