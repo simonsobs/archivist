@@ -132,7 +132,11 @@ def start_server(ctx):
 
     import uvicorn
 
+    from .database import create_all
     from .settings import server_settings
+    from .tasks.archive import start_archive
+
+    create_all()
 
     uvicorn.run(
         "archivist.server:main",

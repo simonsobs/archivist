@@ -2,10 +2,12 @@ import uuid
 
 from fastapi import Depends, Response
 from loguru import logger
+from sqlalchemy.orm import Session
 
 from archivist.api import router
-from archivist.core.models import Archive, ManifestFailedResponse, ManifestRequest, ManifestResponse
-from archivist.queue import ArchiveQueue, get_archive_queue
+from archivist.core.models import ManifestFailedResponse, ManifestRequest, ManifestResponse
+from archivist.database import yield_session
+from archivist.orm.archivequeue import ArchiveQueue
 from archivist.settings import Settings, get_settings
 
 
@@ -13,7 +15,7 @@ from archivist.settings import Settings, get_settings
 def archive(
     manifest_request: ManifestRequest,
     response: Response,
-    queue: ArchiveQueue = Depends(get_archive_queue),
+    session: Session = Depends(yield_session),
     settings: Settings = Depends(get_settings),
 ):
     """
@@ -36,15 +38,14 @@ def archive(
         f"Archiving manifest {manifest_id} from librarian '{manifest_request.librarian_name}': {len(manifest_request.store_files)} file(s), {total_size} bytes total"
     )
 
-    archive = Archive(
+    item = ArchiveQueue.new_item(
         manifest_id=str(manifest_id),
         manifest=manifest_request.model_dump_json(),
         paths=[entry.instance_path for entry in manifest_request.store_files],
-        root=settings.storage_root,  # Example root path
+        root=settings.storage_root,
     )
-
-    # TODO: Add the archive to a queue for processing
-    # queue.enqueue_archive(archive)
+    session.add(item)
+    session.commit()
 
     return ManifestResponse(
         manifest_id=str(manifest_id),

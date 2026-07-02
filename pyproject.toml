@@ -110,5 +110,6 @@ fixture-parentheses = false
 mark-parentheses = false
 
 [tool.isort]
+profile = "black"
 line_length = 120
 skip = ["_version.py"]
