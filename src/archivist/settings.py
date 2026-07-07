@@ -41,8 +41,9 @@ class Settings(BaseSettings):
     port: int = 8080
 
     # storage options
-    storage_type: str = "posix"
-    storage_root: str = "/tmp/archivist_storage"
+    archive_type: str = "posix"
+    archive_root: str = "/tmp/archivist_storage"
+    local_root: str = "/tmp/archivist_local"
 
     # Database migration settings
     alembic_config_path: str = "."
@@ -75,6 +76,9 @@ class Settings(BaseSettings):
     # Checksumming options
     checksum_threads: int = 4
     checksum_timeout: datetime.timedelta = datetime.timedelta(days=1)
+
+    # Number of background threads used to perform filesystem storage copies.
+    storage_threads: int = 4
 
     def model_post_init(__context, *args, **kwargs):
         """

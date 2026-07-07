@@ -2,6 +2,8 @@
 Core database runner for SQLAlchemy.
 """
 
+from typing import Generator
+
 from loguru import logger
 from sqlalchemy import (
     BigInteger,
@@ -15,43 +17,71 @@ from sqlalchemy import (
     String,
     create_engine,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-from .settings import server_settings
+from .settings import get_settings
 
-logger.info("Starting database engine.")
-
-# Create the engine and sessionmaker.
-engine = create_engine(
-    server_settings.sqlalchemy_database_uri,
-    # Required for async and SQLite
-    connect_args=({"check_same_thread": False} if "sqlite" in server_settings.sqlalchemy_database_uri else {}),
-)
-
-logger.info("Creating database session.")
-
-SessionMaker = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+# Engine and sessionmaker are created lazily, on first use, rather than at
+# import time. Settings (in particular the database path / ARCHIVIST_CONFIG_PATH)
+# may not be finalized yet when this module is first imported -- e.g. the CLI
+# sets ARCHIVIST_CONFIG_PATH from `--config` inside a click callback, which runs
+# after all top-level imports have already happened.
+_engine = None
+_SessionMaker = None
 
 
-def yield_session() -> SessionMaker:
+def get_engine():
+    """
+    Returns the (lazily created) SQLAlchemy engine, built from the current settings.
+    """
+
+    global _engine
+
+    if _engine is None:
+        settings = get_settings()
+        logger.info("Starting database engine.")
+        _engine = create_engine(
+            settings.sqlalchemy_database_uri,
+            # Required for async and SQLite
+            connect_args=({"check_same_thread": False} if "sqlite" in settings.sqlalchemy_database_uri else {}),
+        )
+
+    return _engine
+
+
+def get_sessionmaker() -> sessionmaker:
+    """
+    Returns the (lazily created) sessionmaker, bound to the lazily created engine.
+    """
+
+    global _SessionMaker
+
+    if _SessionMaker is None:
+        logger.info("Creating database session.")
+        _SessionMaker = sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
+
+    return _SessionMaker
+
+
+def yield_session() -> "Generator[Session, None, None]":
     """
     Yields a new databse session.
     """
 
-    session = SessionMaker()
+    session = get_sessionmaker()()
     try:
         yield session
     finally:
         session.close()
 
 
-def get_session() -> SessionMaker:
+def get_session() -> "Session":
     """
     Returns a new database session. Unlike yield_session, it is
     your responsibility to close the session.
     """
 
-    return SessionMaker()
+    return get_sessionmaker()()
 
 
 Base = declarative_base()
@@ -65,4 +95,4 @@ def create_all() -> None:
 
     from . import orm  # noqa: F401
 
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(get_engine())

@@ -42,7 +42,7 @@ def archive(
         manifest_id=str(manifest_id),
         manifest=manifest_request.model_dump_json(),
         paths=[entry.instance_path for entry in manifest_request.store_files],
-        root=settings.storage_root,
+        root=settings.archive_root,
     )
     session.add(item)
     session.commit()

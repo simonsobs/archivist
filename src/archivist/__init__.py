@@ -6,4 +6,4 @@
 from ._version import __version__
 from .core.archive import Archive
 from .core.registry import RegistryLibrarian, RegistrySqlite
-from .core.storage import StorageDisk, StorageHPSS
+from .storage import StorageDisk, StorageHPSS

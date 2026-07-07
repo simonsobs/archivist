@@ -4,8 +4,10 @@ import uuid
 from fastapi import Depends, Response
 
 from archivist.api import router
-from archivist.core.models import Archive, ManifestFailedResponse, ManifestRequest, ManifestResponse
-from archivist.queue import Queue, get_extract_queue
+from archivist.core.archive import Archive
+from archivist.core.models import ManifestFailedResponse, ManifestRequest, ManifestResponse
+
+# from archivist.queue import Queue, get_extract_queue
 from archivist.settings import Settings, get_settings
 
 
@@ -13,7 +15,7 @@ from archivist.settings import Settings, get_settings
 def extract(
     manifest_request: ManifestRequest,
     response: Response,
-    queue: Queue = Depends(get_extract_queue),
+    # queue: Queue = Depends(get_extract_queue),
     settings: Settings = Depends(get_settings),
 ):
     """

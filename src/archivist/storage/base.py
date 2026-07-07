@@ -1,7 +1,3 @@
-# Copyright (c) 2025-2026 Simons Observatory.
-# Full license can be found in the top level "LICENSE" file.
-"""Classes for working with storage systems."""
-
 from archivist.core.archive import Archive
 from archivist.settings import Settings
 
@@ -51,46 +47,3 @@ class Storage(object):
 
         """
         self._extract(archive_name, storage_info, outdir, paths=None)
-
-
-class StorageDisk(Storage):
-    """Simple filesystem storage.
-
-    This class just keeps archives in subdirectories within a top-level location.
-    Useful for testing and for archiving to "slow" storage that provides a POSIX
-    API.
-
-    Args:
-        directory (str):  The top-level location for storing archives.
-
-    """
-
-    def __init__(self, settings: Settings | None = None):
-        super().__init__(settings=settings)
-        self._storage_proc = None
-        self._archive = None
-
-    def _store(self, archive: Archive):
-        """Tar the archive files into the storage directory."""
-        pass
-
-    def _extract(self, archive_name, storage_info, outdir, paths=None):
-        """Extract files from tar archives."""
-        pass
-
-
-class StorageHPSS(Storage):
-    """Store archives to HPSS tapes."""
-
-    def __init__(self):
-        super().__init__()
-
-    def _store(self, archive):
-        """Use HTAR to archive files.
-        The tape list is returned for including in the registry entry.
-        """
-        pass
-
-    def _extract(self, archive_name, storage_info, outdir, paths=None):
-        """Extract files from HTAR archives."""
-        pass

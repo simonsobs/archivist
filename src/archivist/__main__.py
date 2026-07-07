@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import click
+import loguru
 import requests
 
 from archivist.core.models import ManifestEntry, ManifestFailedResponse, ManifestRequest, ManifestResponse
@@ -35,12 +36,6 @@ def main(ctx, config):
     "--source-path", type=click.Path(exists=True), required=True, help="The source path of the file to archive"
 )
 @click.option(
-    "--dest-path",
-    type=click.Path(exists=False),
-    required=True,
-    help="The destination path where the file should be archived",
-)
-@click.option(
     "--librarian-name",
     type=str,
     required=False,
@@ -48,18 +43,17 @@ def main(ctx, config):
     default="librarian",
 )
 @click.pass_context
-def archive(ctx, source_path, dest_path, librarian_name):
+def archive(ctx, source_path, librarian_name):
     """Command to archive a file.
     For example: `archivist -c config archive "--source-path /path/to/source --dest-path /path/to/dest"`
     """
     # Here you would implement the logic to handle the archiving process
     # For now, we will just print the source and destination paths
-    click.echo(f"Archiving file from {source_path} to {dest_path}")
+    click.echo(f"Archiving file from {source_path}")
 
     settings = get_settings()
 
     source_root = Path(source_path)
-    dest_root = Path(dest_path) if dest_path is not None else "source_root"
 
     if source_root.is_file():
         files = [source_root]
@@ -74,7 +68,7 @@ def archive(ctx, source_path, dest_path, librarian_name):
     for file_path in files:
         stat = file_path.stat()
         relative_path = file_path.relative_to(walk_root)
-
+        loguru.logger.info(f"Archiving file: {file_path}, relative path: {relative_path}")
         store_files.append(
             ManifestEntry(
                 name=file_path.name,
@@ -83,7 +77,7 @@ def archive(ctx, source_path, dest_path, librarian_name):
                 checksum=_checksum(file_path),
                 uploader=uploader,
                 source=str(source_root),
-                instance_path=str(dest_root / relative_path),
+                instance_path=str(file_path.absolute()),
                 instance_create_time=datetime.now(),
                 instance_available=True,
                 outgoing_transfer_id=0,
@@ -132,11 +126,7 @@ def start_server(ctx):
 
     import uvicorn
 
-    from .database import create_all
     from .settings import server_settings
-    from .tasks.archive import start_archive
-
-    create_all()
 
     uvicorn.run(
         "archivist.server:main",

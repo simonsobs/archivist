@@ -48,17 +48,3 @@ class ManifestResponse(BaseModel):
 class ManifestFailedResponse(BaseModel):
     error: str
     "The error message indicating why the manifest request failed."
-
-
-class Archive(BaseModel):
-    manifest_id: str
-    "The ID of the manifest associated with this archive."
-
-    manifest: str
-    "Path to a manifest file listing the files / directories contained in the archive."
-
-    paths: list[str]
-    "Alternatively list the full set of files / directories contained in the archive."
-
-    root: str
-    "The common root filesystem location for building relative paths for all objects."

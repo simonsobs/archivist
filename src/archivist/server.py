@@ -25,6 +25,18 @@ def _archive_worker_loop():
             logger.exception("Archive worker iteration failed")
 
 
+def _status_worker_loop():
+    from loguru import logger
+
+    from .tasks.archive import process_status_queue
+
+    while not _archive_stop_event.is_set():
+        try:
+            process_status_queue()
+        except Exception:
+            logger.exception("Archive worker iteration failed")
+
+
 @asynccontextmanager
 async def slack_post_at_startup_shutdown(app: FastAPI):
     """
@@ -33,16 +45,20 @@ async def slack_post_at_startup_shutdown(app: FastAPI):
     """
     from loguru import logger
 
+    from .database import create_all
+
     logger.info("Archivist server starting up")
 
-    archive_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="archive-worker")
-    archive_pool.submit(_archive_worker_loop)
+    create_all()
 
+    thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="worker")
+    thread_pool.submit(_archive_worker_loop)
+    thread_pool.submit(_status_worker_loop)
     yield
 
     logger.info("Archivist server shutting down")
     _archive_stop_event.set()
-    archive_pool.shutdown(wait=True)
+    thread_pool.shutdown(wait=True)
 
 
 def main() -> FastAPI:
