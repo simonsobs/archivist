@@ -7,10 +7,11 @@ name = "archivist"
 dynamic = ["version"]
 description = "Archival data storage for the Librarian"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -115,3 +116,10 @@ mark-parentheses = false
 profile = "black"
 line_length = 120
 skip = ["_version.py"]
+
+[tool.pytest.ini_options]
+addopts = "--random-order --cov=archivist --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["archivist"]
+branch = true
