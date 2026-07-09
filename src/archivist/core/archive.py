@@ -70,7 +70,7 @@ class Archive(object):
                 src_path = Path(entry["instance_path"])
                 dst_path = Path(self._archive_root) / src_path.relative_to(self._local_root)
                 src_dst_paths.append((src_path, dst_path))
-                return src_dst_paths
+            return src_dst_paths
 
         elif self._type == "hpss":
             # Implement logic for creating an HPSS archive
