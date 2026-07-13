@@ -1,4 +1,4 @@
-from archivist.core.archive import Archive
+from archivist.core.archive_job import ArchiveJob
 from archivist.settings import Settings
 
 
@@ -8,14 +8,14 @@ class Storage(object):
     def __init__(self, settings: Settings | None = None):
         self._settings = settings
 
-    def _store(self, archive):
+    def _store(self, archive: ArchiveJob) -> "Storage":
         raise NotImplementedError("Fell through to base class")
 
-    def store(self, archive):
+    def store(self, archive: ArchiveJob) -> "Storage":
         """Store an archive.
 
         Args:
-            archive (Archive):  The archive to store.
+            archive (ArchiveJob):  The archive to store.
 
         Returns:
             (dict):  Metadata specific to the storage system.  Used when registering

@@ -8,12 +8,12 @@ from pathlib import Path
 
 from conftest import make_manifest_entry
 
-from archivist.core.archive import Archive
+from archivist.core.archive_job import ArchiveJob
 
 
 class TestArchiveProperties(unittest.TestCase):
     def test_defaults_are_none(self):
-        archive = Archive()
+        archive = ArchiveJob()
         self.assertIsNone(archive.manifest)
         self.assertIsNone(archive.manifest_id)
         self.assertIsNone(archive.local_root)
@@ -22,7 +22,7 @@ class TestArchiveProperties(unittest.TestCase):
 
     def test_constructor_sets_properties(self):
         manifest = {"store_files": []}
-        archive = Archive(
+        archive = ArchiveJob(
             manifest=manifest,
             manifest_id="abc",
             local_root="/local",
@@ -35,7 +35,7 @@ class TestArchiveProperties(unittest.TestCase):
         self.assertEqual(archive.archive_root, "/archive")
 
     def test_repr_includes_key_fields(self):
-        archive = Archive(manifest_id="abc", type="posix")
+        archive = ArchiveJob(manifest_id="abc", type="posix")
         text = repr(archive)
         self.assertIn("abc", text)
         self.assertIn("posix", text)
@@ -48,7 +48,7 @@ class TestCreateArchivePosix(unittest.TestCase):
                 make_manifest_entry(instance_path="/local/sub/file.txt"),
             ]
         }
-        archive = Archive(
+        archive = ArchiveJob(
             manifest=manifest,
             local_root="/local",
             archive_root="/archive",
@@ -69,24 +69,24 @@ class TestCreateArchivePosix(unittest.TestCase):
                 make_manifest_entry(instance_path="/local/b.txt"),
             ]
         }
-        archive = Archive(manifest=manifest, local_root="/local", archive_root="/archive", type="posix")
+        archive = ArchiveJob(manifest=manifest, local_root="/local", archive_root="/archive", type="posix")
 
         pairs = archive.create_archive()
 
         self.assertEqual([str(src) for src, _ in pairs], ["/local/a.txt", "/local/b.txt"])
 
     def test_empty_store_files_returns_empty_list(self):
-        archive = Archive(manifest={"store_files": []}, local_root="/local", archive_root="/archive", type="posix")
+        archive = ArchiveJob(manifest={"store_files": []}, local_root="/local", archive_root="/archive", type="posix")
         self.assertEqual(archive.create_archive(), [])
 
 
 class TestCreateArchiveOtherTypes(unittest.TestCase):
     def test_hpss_returns_none(self):
-        archive = Archive(manifest={"store_files": []}, type="hpss")
+        archive = ArchiveJob(manifest={"store_files": []}, type="hpss")
         self.assertIsNone(archive.create_archive())
 
     def test_unknown_type_returns_none(self):
-        archive = Archive(manifest={"store_files": []}, type="something-else")
+        archive = ArchiveJob(manifest={"store_files": []}, type="something-else")
         self.assertIsNone(archive.create_archive())
 
 

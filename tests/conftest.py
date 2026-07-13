@@ -114,6 +114,41 @@ def make_manifest_entry(**overrides):
     return entry
 
 
+def make_archive_item(
+    session,
+    manifest_id="m1",
+    *,
+    librarian_name="test-librarian",
+    archive_root="/root",
+    entries=None,
+):
+    """Persist a `Manifest` (+ `ManifestEntry` rows) and its `Archive` job.
+
+    Mirrors what the `/archive` route does, so worker/ORM tests can build a
+    ready-to-dequeue job in one call. `entries` is a list of dicts as produced
+    by `make_manifest_entry`; defaults to a single entry.
+    """
+
+    from archivist.orm import Archive, Manifest, ManifestEntry
+
+    if entries is None:
+        entries = [make_manifest_entry()]
+
+    manifest = Manifest.get_or_create(
+        session,
+        manifest_id=manifest_id,
+        librarian_name=librarian_name,
+    )
+    manifest.entries = [ManifestEntry(**entry) for entry in entries]
+    manifest.total_size_bytes = sum(entry["size"] for entry in entries)
+    manifest.file_count = len(entries)
+
+    item = Archive.new_item(manifest=manifest, archive_root=str(archive_root))
+    session.add(item)
+    session.commit()
+    return item
+
+
 def make_manifest_entry_json(**overrides):
     """Like `make_manifest_entry`, but with datetimes as ISO strings for use as raw HTTP JSON bodies."""
 

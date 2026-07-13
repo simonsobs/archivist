@@ -1,13 +1,14 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
 
-"""Tests for archivist.orm.archivequeue.ArchiveQueue, against a real sqlite DB."""
+"""Tests for archivist.orm.archive.Archive, against a real sqlite DB."""
 
 import unittest
 
 import pytest
+from conftest import make_archive_item
 
-from archivist.orm.archivequeue import ArchiveQueue
+from archivist.orm import Archive, Manifest
 
 
 @pytest.mark.usefixtures("db_session")
@@ -21,44 +22,41 @@ class TestArchiveQueueBase(unittest.TestCase):
 
 class TestNewItem(TestArchiveQueueBase):
     def test_new_item_defaults(self):
-        item = ArchiveQueue.new_item(manifest_id="m1", manifest="{}", paths=["/a"], root="/root")
-        self.assertEqual(item.manifest_id, "m1")
-        self.assertEqual(item.paths, ["/a"])
-        self.assertEqual(item.root, "/root")
+        manifest = Manifest.get_or_create(self.session, manifest_id="m1", librarian_name="lib")
+        item = Archive.new_item(manifest=manifest, archive_root="/root")
+        self.assertIs(item.manifest, manifest)
+        self.assertEqual(item.archive_root, "/root")
         self.assertEqual(item.retries, 0)
         self.assertFalse(item.consumed)
         self.assertFalse(item.completed)
         self.assertFalse(item.failed)
 
     def test_new_item_persists(self):
-        item = ArchiveQueue.new_item(manifest_id="m1", manifest="{}", paths=["/a"], root="/root")
-        self.session.add(item)
-        self.session.commit()
+        make_archive_item(self.session, manifest_id="m1", archive_root="/root")
 
-        fetched = self.session.query(ArchiveQueue).filter_by(manifest_id="m1").one()
-        self.assertEqual(fetched.root, "/root")
+        fetched = self.session.query(Archive).filter_by(manifest_id="m1").one()
+        self.assertEqual(fetched.archive_root, "/root")
 
     def test_manifest_id_must_be_unique(self):
         from sqlalchemy.exc import IntegrityError
 
-        self.session.add(ArchiveQueue.new_item(manifest_id="dup", manifest="{}", paths=[], root="/root"))
-        self.session.commit()
+        make_archive_item(self.session, manifest_id="dup", archive_root="/root")
 
-        self.session.add(ArchiveQueue.new_item(manifest_id="dup", manifest="{}", paths=[], root="/root"))
+        # A second archive job on the same manifest violates the unique FK (1:1).
+        manifest = Manifest.get_or_create(self.session, manifest_id="dup", librarian_name="lib")
+        self.session.add(Archive.new_item(manifest=manifest, archive_root="/root"))
         with self.assertRaises(IntegrityError):
             self.session.commit()
 
 
 class TestDequeue(TestArchiveQueueBase):
     def test_dequeue_returns_none_when_empty(self):
-        self.assertIsNone(ArchiveQueue.dequeue(self.session))
+        self.assertIsNone(Archive.dequeue(self.session))
 
     def test_dequeue_marks_item_consumed(self):
-        item = ArchiveQueue.new_item(manifest_id="m1", manifest="{}", paths=[], root="/root")
-        self.session.add(item)
-        self.session.commit()
+        make_archive_item(self.session, manifest_id="m1")
 
-        dequeued = ArchiveQueue.dequeue(self.session)
+        dequeued = Archive.dequeue(self.session)
 
         self.assertEqual(dequeued.manifest_id, "m1")
         self.assertTrue(dequeued.consumed)
@@ -67,35 +65,25 @@ class TestDequeue(TestArchiveQueueBase):
     def test_dequeue_returns_oldest_first(self):
         import time
 
-        first = ArchiveQueue.new_item(manifest_id="first", manifest="{}", paths=[], root="/root")
-        self.session.add(first)
-        self.session.commit()
-
+        make_archive_item(self.session, manifest_id="first")
         time.sleep(0.01)
+        make_archive_item(self.session, manifest_id="second")
 
-        second = ArchiveQueue.new_item(manifest_id="second", manifest="{}", paths=[], root="/root")
-        self.session.add(second)
-        self.session.commit()
-
-        dequeued = ArchiveQueue.dequeue(self.session)
+        dequeued = Archive.dequeue(self.session)
 
         self.assertEqual(dequeued.manifest_id, "first")
 
     def test_dequeue_skips_already_consumed_items(self):
-        item = ArchiveQueue.new_item(manifest_id="m1", manifest="{}", paths=[], root="/root")
-        self.session.add(item)
-        self.session.commit()
+        make_archive_item(self.session, manifest_id="m1")
 
-        ArchiveQueue.dequeue(self.session)
+        Archive.dequeue(self.session)
 
-        self.assertIsNone(ArchiveQueue.dequeue(self.session))
+        self.assertIsNone(Archive.dequeue(self.session))
 
 
 class TestCompleteAndFail(TestArchiveQueueBase):
     def test_complete_sets_flags(self):
-        item = ArchiveQueue.new_item(manifest_id="m1", manifest="{}", paths=[], root="/root")
-        self.session.add(item)
-        self.session.commit()
+        item = make_archive_item(self.session, manifest_id="m1")
 
         item.complete(self.session)
 
@@ -104,9 +92,7 @@ class TestCompleteAndFail(TestArchiveQueueBase):
         self.assertIsNotNone(item.completed_time)
 
     def test_fail_sets_flags(self):
-        item = ArchiveQueue.new_item(manifest_id="m1", manifest="{}", paths=[], root="/root")
-        self.session.add(item)
-        self.session.commit()
+        item = make_archive_item(self.session, manifest_id="m1")
 
         item.fail(self.session)
 

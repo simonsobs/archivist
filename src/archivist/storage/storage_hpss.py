@@ -1,4 +1,4 @@
-from archivist.core.archive import Archive
+from archivist.core.archive_job import ArchiveJob
 from archivist.settings import Settings
 from archivist.storage.base import Storage
 

@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from archivist.api import health_router
 from archivist.api import router as api_router
 from archivist.database import yield_session
-from archivist.orm.archivequeue import ArchiveQueue
+from archivist.orm.archive import Archive
 from archivist.settings import get_settings
 
 
@@ -81,7 +81,7 @@ class TestArchiveEndpoint(TestApiBase):
         response = self.client.post("/api/v1/archive", json=payload)
         manifest_id = response.json()["manifest_id"]
 
-        item = self.session.query(ArchiveQueue).filter_by(manifest_id=manifest_id).one()
+        item = self.session.query(Archive).filter_by(manifest_id=manifest_id).one()
         self.assertFalse(item.consumed)
         self.assertFalse(item.completed)
 

@@ -4,6 +4,6 @@
 """Archive tools for data."""
 
 from ._version import __version__
-from .core.archive import Archive
+from .core.archive_job import ArchiveJob
 from .core.registry import RegistryLibrarian, RegistrySqlite
 from .storage import StorageDisk, StorageHPSS

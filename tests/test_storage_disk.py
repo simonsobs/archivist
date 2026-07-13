@@ -8,7 +8,7 @@ import unittest
 import pytest
 from conftest import make_manifest_entry
 
-from archivist.core.archive import Archive
+from archivist.core.archive_job import ArchiveJob
 from archivist.storage.storage_disk import StorageDisk
 
 
@@ -27,7 +27,7 @@ class TestStoreSingleFile(TestStorageDiskBase):
         source.write_text("hello")
 
         manifest = {"store_files": [make_manifest_entry(instance_path=str(source))]}
-        archive = Archive(
+        archive = ArchiveJob(
             manifest=manifest,
             local_root=str(self.local_root),
             archive_root=str(self.archive_root),
@@ -49,7 +49,7 @@ class TestStoreSingleFile(TestStorageDiskBase):
         source.write_text("nested-content")
 
         manifest = {"store_files": [make_manifest_entry(instance_path=str(source))]}
-        archive = Archive(
+        archive = ArchiveJob(
             manifest=manifest,
             local_root=str(self.local_root),
             archive_root=str(self.archive_root),
@@ -69,7 +69,7 @@ class TestStoreSingleFile(TestStorageDiskBase):
         source.write_text("hello")
 
         manifest = {"store_files": [make_manifest_entry(instance_path=str(source))]}
-        archive = Archive(
+        archive = ArchiveJob(
             manifest=manifest,
             local_root=str(self.local_root),
             archive_root=str(self.archive_root),
@@ -92,7 +92,7 @@ class TestStoreDirectory(TestStorageDiskBase):
         (src_dir / "inner.txt").write_text("inner-content")
 
         manifest = {"store_files": [make_manifest_entry(instance_path=str(src_dir))]}
-        archive = Archive(
+        archive = ArchiveJob(
             manifest=manifest,
             local_root=str(self.local_root),
             archive_root=str(self.archive_root),

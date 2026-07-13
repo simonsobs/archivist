@@ -6,7 +6,7 @@
 import unittest
 
 import archivist
-from archivist import Archive, RegistryLibrarian, RegistrySqlite, StorageDisk, StorageHPSS
+from archivist import ArchiveJob, RegistryLibrarian, RegistrySqlite, StorageDisk, StorageHPSS
 
 
 class TestPackageImports(unittest.TestCase):
@@ -14,13 +14,13 @@ class TestPackageImports(unittest.TestCase):
         self.assertIsInstance(archivist.__version__, str)
 
     def test_construction(self):
-        archive = Archive()
+        archive_job = ArchiveJob()
         reg_lib = RegistryLibrarian()
         reg_sql = RegistrySqlite()
         store_disk = StorageDisk()
         store_hpss = StorageHPSS()
 
-        self.assertIsInstance(archive, Archive)
+        self.assertIsInstance(archive_job, ArchiveJob)
         self.assertIsInstance(reg_lib, RegistryLibrarian)
         self.assertIsInstance(reg_sql, RegistrySqlite)
         self.assertIsInstance(store_disk, StorageDisk)

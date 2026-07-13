@@ -7,7 +7,7 @@ from pathlib import Path
 from .models import ManifestRequest
 
 
-class Archive(object):
+class ArchiveJob(object):
     """Class representing a single archive in a storage system.
 
     When listing objects in the manifest or paths list, directories can be specified

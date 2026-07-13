@@ -5,9 +5,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from archivist.core.archive import Archive
-from archivist.database import get_session
-from archivist.orm.archivequeue import ArchiveQueue
+from archivist.core.archive_job import ArchiveJob
 from archivist.settings import Settings
 from archivist.storage.base import Storage
 
@@ -49,7 +47,7 @@ class StorageDisk(Storage):
             else:
                 shutil.copy2(src_path, dst_path)
 
-    def _store(self, archive: Archive) -> "StorageDisk":
+    def _store(self, archive: ArchiveJob) -> "StorageDisk":
         """Copy the archive's files into a per-manifest subdirectory of archive_root."""
         self._archive = archive
         paths = self._archive.create_archive()

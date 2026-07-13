@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from archivist.api import router
 from archivist.core.models import ManifestFailedResponse, ManifestRequest, ManifestResponse
 from archivist.database import yield_session
-from archivist.orm.archivequeue import ArchiveQueue
+from archivist.orm import Archive, Manifest, ManifestEntry
 from archivist.settings import Settings, get_settings
 
 
@@ -34,16 +34,37 @@ def archive(
 
     manifest_id = uuid.uuid4()
 
+    # get_or_create adds the Manifest to the session on the create path and
+    # returns it; attach entries and the archive job through relationships so
+    # the FKs resolve and a single commit cascade-persists everything.
+    manifest = Manifest.get_or_create(
+        session,
+        manifest_id=str(manifest_id),
+        librarian_name=manifest_request.librarian_name,
+    )
+    manifest.entries = [
+        ManifestEntry(
+            name=entry.name,
+            create_time=entry.create_time,
+            size=entry.size,
+            checksum=entry.checksum,
+            uploader=entry.uploader,
+            source=entry.source,
+            instance_path=entry.instance_path,
+            instance_create_time=entry.instance_create_time,
+            instance_available=entry.instance_available,
+            outgoing_transfer_id=entry.outgoing_transfer_id,
+        )
+        for entry in manifest_request.store_files
+    ]
+    manifest.total_size_bytes = total_size
+    manifest.file_count = len(manifest_request.store_files)
+
     logger.info(
         f"Archiving manifest {manifest_id} from librarian '{manifest_request.librarian_name}': {len(manifest_request.store_files)} file(s), {total_size} bytes total"
     )
 
-    item = ArchiveQueue.new_item(
-        manifest_id=str(manifest_id),
-        manifest=manifest_request.model_dump_json(),
-        paths=[entry.instance_path for entry in manifest_request.store_files],
-        root=settings.archive_root,
-    )
+    item = Archive.new_item(manifest=manifest, archive_root=settings.archive_root)
     session.add(item)
     session.commit()
 

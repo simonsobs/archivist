@@ -17,7 +17,7 @@ from sqlalchemy import (
     String,
     create_engine,
 )
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 from .settings import get_settings
 

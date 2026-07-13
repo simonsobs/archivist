@@ -9,10 +9,9 @@ import unittest
 import unittest.mock
 
 import pytest
-from conftest import make_manifest_entry
+from conftest import make_archive_item, make_manifest_entry
 
-from archivist.core.models import ManifestRequest
-from archivist.orm.archivequeue import ArchiveQueue
+from archivist.orm.archive import Archive
 from archivist.queue import get_status_queue
 from archivist.tasks.archive import process_status_queue, start_archive
 
@@ -27,19 +26,12 @@ class TestTasksArchiveBase(unittest.TestCase):
         self.archive_root = archive_root
 
     def _enqueue_manifest_for(self, source_path, manifest_id="m1"):
-        request = ManifestRequest(
-            librarian_name="test-librarian",
-            store_files=[make_manifest_entry(instance_path=str(source_path))],
-        )
-        item = ArchiveQueue.new_item(
+        return make_archive_item(
+            self.session,
             manifest_id=manifest_id,
-            manifest=request.model_dump_json(),
-            paths=[str(source_path)],
-            root=str(self.archive_root),
+            archive_root=str(self.archive_root),
+            entries=[make_manifest_entry(instance_path=str(source_path))],
         )
-        self.session.add(item)
-        self.session.commit()
-        return item
 
 
 class TestStartArchive(TestTasksArchiveBase):
@@ -56,7 +48,7 @@ class TestStartArchive(TestTasksArchiveBase):
 
         self.assertEqual(get_status_queue().size, 1)
 
-        item = self.session.query(ArchiveQueue).filter_by(manifest_id="m1").one()
+        item = self.session.query(Archive).filter_by(manifest_id="m1").one()
         self.assertTrue(item.consumed)
 
     def test_start_archive_actually_copies_file(self):
@@ -89,7 +81,7 @@ class TestProcessStatusQueue(TestTasksArchiveBase):
         while time.time() < deadline:
             process_status_queue()
             self.session.expire_all()
-            item = self.session.query(ArchiveQueue).filter_by(manifest_id="m1").one()
+            item = self.session.query(Archive).filter_by(manifest_id="m1").one()
             if item.completed:
                 break
             time.sleep(0.05)
@@ -150,11 +142,11 @@ class TestProcessStatusQueue(TestTasksArchiveBase):
             time.sleep(0.05)
         get_status_queue().enqueue(task)
 
-        with unittest.mock.patch.object(ArchiveQueue, "complete", side_effect=RuntimeError("boom")):
+        with unittest.mock.patch.object(Archive, "complete", side_effect=RuntimeError("boom")):
             process_status_queue()
 
         self.session.expire_all()
-        item = self.session.query(ArchiveQueue).filter_by(manifest_id="m1").one()
+        item = self.session.query(Archive).filter_by(manifest_id="m1").one()
         self.assertTrue(item.completed)
         self.assertTrue(item.failed)
 
