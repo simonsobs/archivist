@@ -36,7 +36,7 @@ class Manifest(db.Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    "The single archive job for this manifest (1:1, decision 5)."
+    "The single archive job for this manifest."
 
     @classmethod
     def get_or_create(cls, session, manifest_id, librarian_name) -> "Manifest":

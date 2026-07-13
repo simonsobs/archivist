@@ -26,8 +26,7 @@ def start_archive(
     route), so dependencies are resolved here rather than via `Depends`.
     Takes ``session_maker`` (rather than calling ``get_session`` inline) so a
     future task-based runner can inject it; returns ``True`` when a job was
-    picked up and ``False`` when the queue was empty, mirroring librarian's
-    ``consume_queue_item``.
+    picked up and ``False`` when the queue was empty.
     """
     status_queue = get_status_queue()
     settings = get_settings()

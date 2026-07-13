@@ -24,7 +24,7 @@ class Archive(db.Base):
 
     __tablename__ = "archive"
 
-    id = db.Column(db.String(36), primary_key=True)  # archivist-minted uuid4, decision 1
+    id = db.Column(db.String(36), primary_key=True)  # archivist-minted uuid4
     "Archivist-minted uuid4 identifying this archive job."
     created_time = db.Column(db.DateTime, nullable=False)
     "The time this job was added to the queue."
@@ -35,18 +35,18 @@ class Archive(db.Base):
         db.String(36),
         db.ForeignKey("manifest.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,  # 1:1, decision 5
+        unique=True,  # 1:1
     )
     "FK to the manifest being archived (unique -> 1:1)."
     manifest = db.relationship("Manifest", back_populates="archive")
     "The manifest being archived."
 
-    archive_root = db.Column(db.String(512), nullable=False)  # renamed from `root`
+    archive_root = db.Column(db.String(512), nullable=False)
     "The archive root at submit time; snapshotted since settings can change."
     archive_path = db.Column(db.String(2048), nullable=True)
     "The destination path, set on completion."
 
-    librarian_archive_id = db.Column(db.String(2048), nullable=True, unique=True)  # decision 2
+    librarian_archive_id = db.Column(db.String(2048), nullable=True, unique=True)
     "Site-specific identifier supplied by the Librarian callback contract."
 
     consumed = db.Column(db.Boolean, default=False)
@@ -72,8 +72,6 @@ class Archive(db.Base):
 
     @classmethod
     def dequeue(cls, session: Session) -> "Archive | None":
-        # Mirror librarian's consume_queue_item: lock-and-skip so workers never
-        # grab the same row, and filter on BOTH flags (consumed AND completed).
         stmt = (
             select(cls)
             .options(joinedload(cls.manifest).selectinload(Manifest.entries))
