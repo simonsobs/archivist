@@ -101,5 +101,30 @@ class TestCompleteAndFail(TestArchiveQueueBase):
         self.assertIsNotNone(item.completed_time)
 
 
+class TestRequeue(TestArchiveQueueBase):
+    def test_requeue_resets_consumed_and_bumps_retries(self):
+        item = make_archive_item(self.session, manifest_id="m1")
+        Archive.dequeue(self.session)  # marks consumed=True, sets consumed_time
+        self.assertTrue(item.consumed)
+
+        item.requeue(self.session)
+
+        self.assertFalse(item.consumed)
+        self.assertIsNone(item.consumed_time)
+        self.assertEqual(item.retries, 1)
+        self.assertFalse(item.completed)
+
+    def test_requeued_item_is_dequeueable_again(self):
+        make_archive_item(self.session, manifest_id="m1")
+        item = Archive.dequeue(self.session)
+        self.assertIsNone(Archive.dequeue(self.session))  # consumed, not visible
+
+        item.requeue(self.session)
+
+        again = Archive.dequeue(self.session)
+        self.assertIsNotNone(again)
+        self.assertEqual(again.manifest_id, "m1")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -47,3 +47,10 @@ class Storage(object):
 
         """
         self._extract(archive_name, storage_info, outdir, paths=None)
+
+    def _verify(self, archive: ArchiveJob) -> bool:
+        raise NotImplementedError("Fell through to base class")
+
+    def verify(self, archive: ArchiveJob) -> bool:
+        """Return True only if the destination already fully satisfies the manifest."""
+        return self._verify(archive)

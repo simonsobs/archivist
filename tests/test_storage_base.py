@@ -19,6 +19,11 @@ class TestStorageBase(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             storage.extract(archive_name="a", storage_info={}, outdir="/tmp/out")
 
+    def test_verify_raises_not_implemented(self):
+        storage = Storage()
+        with self.assertRaises(NotImplementedError):
+            storage.verify(archive=None)
+
     def test_settings_defaults_to_none(self):
         storage = Storage()
         self.assertIsNone(storage._settings)
@@ -36,6 +41,7 @@ class _RecordingStorage(Storage):
         super().__init__(settings=settings)
         self.store_calls = []
         self.extract_calls = []
+        self.verify_calls = []
 
     def _store(self, archive):
         self.store_calls.append(archive)
@@ -43,6 +49,10 @@ class _RecordingStorage(Storage):
 
     def _extract(self, archive_name, storage_info, outdir, paths=None):
         self.extract_calls.append((archive_name, storage_info, outdir, paths))
+
+    def _verify(self, archive):
+        self.verify_calls.append(archive)
+        return True
 
 
 class TestStorageDelegation(unittest.TestCase):
@@ -52,6 +62,13 @@ class TestStorageDelegation(unittest.TestCase):
 
         self.assertEqual(storage.store_calls, ["my-archive"])
         self.assertEqual(result, {"stored": True})
+
+    def test_verify_delegates_to_verify_impl_and_returns_its_value(self):
+        storage = _RecordingStorage()
+        result = storage.verify(archive="my-archive")
+
+        self.assertEqual(storage.verify_calls, ["my-archive"])
+        self.assertTrue(result)
 
     def test_extract_ignores_caller_supplied_paths(self):
         """

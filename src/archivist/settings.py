@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     archive_type: str = "posix"
     archive_root: str = "/tmp/archivist_storage"
     local_root: str = "/tmp/archivist_local"
+    max_archive_retries: int = 3
 
     # Database migration settings
     alembic_config_path: str = "."

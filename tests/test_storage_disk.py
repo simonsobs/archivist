@@ -116,6 +116,123 @@ class TestSharedExecutor(TestStorageDiskBase):
         self.assertIs(StorageDisk._executor, first._executor)
 
 
+class TestEntrySatisfied(TestStorageDiskBase):
+    def test_true_when_file_present_with_matching_size(self):
+        dst = self.archive_root / "f.txt"
+        dst.write_text("hello")  # 5 bytes
+        self.assertTrue(StorageDisk._entry_satisfied(dst, 5))
+
+    def test_false_when_missing(self):
+        self.assertFalse(StorageDisk._entry_satisfied(self.archive_root / "nope.txt", 5))
+
+    def test_false_when_size_mismatch(self):
+        dst = self.archive_root / "f.txt"
+        dst.write_text("hello")  # 5 bytes
+        self.assertFalse(StorageDisk._entry_satisfied(dst, 99))
+
+    def test_false_for_directory(self):
+        d = self.archive_root / "adir"
+        d.mkdir()
+        self.assertFalse(StorageDisk._entry_satisfied(d, 0))
+
+
+class TestIdempotentCopy(TestStorageDiskBase):
+    def test_copy_files_skips_already_present_matching_file(self):
+        src = self.local_root / "file.txt"
+        src.write_text("original")
+        dst = self.archive_root / "file.txt"
+        dst.write_text("original")  # already there, same 8-byte size
+        dst_mtime = dst.stat().st_mtime_ns
+
+        storage = StorageDisk(settings=self.settings)
+        storage._copy_files([(src, dst, 8)])
+
+        # Untouched: the copy was skipped, so mtime is unchanged.
+        self.assertEqual(dst.stat().st_mtime_ns, dst_mtime)
+
+    def test_copy_files_recopies_when_size_differs(self):
+        src = self.local_root / "file.txt"
+        src.write_text("new-content")  # 11 bytes
+        dst = self.archive_root / "file.txt"
+        dst.write_text("stale")  # 5 bytes -> mismatch, must be recopied
+
+        storage = StorageDisk(settings=self.settings)
+        storage._copy_files([(src, dst, 11)])
+
+        self.assertEqual(dst.read_text(), "new-content")
+
+    def test_copy_files_copies_when_destination_missing(self):
+        src = self.local_root / "file.txt"
+        src.write_text("hello")
+        dst = self.archive_root / "sub" / "file.txt"
+
+        storage = StorageDisk(settings=self.settings)
+        storage._copy_files([(src, dst, 5)])
+
+        self.assertTrue(dst.exists())
+        self.assertEqual(dst.read_text(), "hello")
+
+
+class TestVerify(TestStorageDiskBase):
+    def _archive_for(self, source, size):
+        manifest = {"store_files": [make_manifest_entry(instance_path=str(source), size=size)]}
+        return ArchiveJob(
+            manifest=manifest,
+            local_root=str(self.local_root),
+            archive_root=str(self.archive_root),
+            type="posix",
+        )
+
+    def test_verify_true_when_destination_fully_present(self):
+        source = self.local_root / "file.txt"
+        source.write_text("hello")
+        dest = self.archive_root / "file.txt"
+        dest.write_text("hello")  # present, 5 bytes matches manifest size
+
+        storage = StorageDisk(settings=self.settings)
+        self.assertTrue(storage.verify(self._archive_for(source, 5)))
+
+    def test_verify_false_when_destination_missing(self):
+        source = self.local_root / "file.txt"
+        source.write_text("hello")
+        # No destination file written.
+
+        storage = StorageDisk(settings=self.settings)
+        self.assertFalse(storage.verify(self._archive_for(source, 5)))
+
+    def test_verify_false_when_destination_size_mismatch(self):
+        source = self.local_root / "file.txt"
+        source.write_text("hello")
+        dest = self.archive_root / "file.txt"
+        dest.write_text("hi")  # 2 bytes, manifest says 5
+
+        storage = StorageDisk(settings=self.settings)
+        self.assertFalse(storage.verify(self._archive_for(source, 5)))
+
+    def test_verify_false_when_only_some_files_present(self):
+        a = self.local_root / "a.txt"
+        a.write_text("aaa")
+        b = self.local_root / "b.txt"
+        b.write_text("bbb")
+        (self.archive_root / "a.txt").write_text("aaa")  # only a present
+
+        manifest = {
+            "store_files": [
+                make_manifest_entry(instance_path=str(a), size=3),
+                make_manifest_entry(instance_path=str(b), size=3),
+            ]
+        }
+        archive = ArchiveJob(
+            manifest=manifest,
+            local_root=str(self.local_root),
+            archive_root=str(self.archive_root),
+            type="posix",
+        )
+
+        storage = StorageDisk(settings=self.settings)
+        self.assertFalse(storage.verify(archive))
+
+
 class TestExtractStub(TestStorageDiskBase):
     def test_extract_is_currently_a_noop_stub(self):
         storage = StorageDisk(settings=self.settings)

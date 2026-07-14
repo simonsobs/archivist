@@ -69,7 +69,7 @@ class ArchiveJob(object):
             for entry in self._manifest["store_files"]:
                 src_path = Path(entry["instance_path"])
                 dst_path = Path(self._archive_root) / src_path.relative_to(self._local_root)
-                src_dst_paths.append((src_path, dst_path))
+                src_dst_paths.append((src_path, dst_path, entry["size"]))
             return src_dst_paths
 
         elif self._type == "hpss":

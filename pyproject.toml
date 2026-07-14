@@ -26,6 +26,8 @@ dependencies = [
     "uvicorn",
     "requests>=2.32.5",
     "alembic>=1.18.5",
+    "psycopg[binary,pool]",
+    "psycopg2>=2.9.12",
 ]
 
 [project.urls]

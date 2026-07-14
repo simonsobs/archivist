@@ -38,9 +38,16 @@ class StorageDisk(Storage):
         """The Future tracking the in-progress (or completed) copy, if any."""
         return self._future
 
-    def _copy_files(self, file_list: list[tuple[Path, Path]]) -> None:
-        """Copy each path in file_list into dest_dir."""
-        for src_path, dst_path in file_list:
+    @staticmethod
+    def _entry_satisfied(dst_path: Path, expected_size: int) -> bool:
+        """True if dst_path exists as a regular file of the expected size."""
+        return dst_path.is_file() and dst_path.stat().st_size == expected_size
+
+    def _copy_files(self, file_list: list[tuple[Path, Path, int]]) -> None:
+        for src_path, dst_path, expected_size in file_list:
+            if self._entry_satisfied(dst_path, expected_size):
+                logger.debug(f"Skipping already-present {dst_path} (size {expected_size})")
+                continue
             os.makedirs(dst_path.parent, exist_ok=True)
             if os.path.isdir(src_path):
                 shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
@@ -59,3 +66,13 @@ class StorageDisk(Storage):
     def _extract(self, archive_name, storage_info, outdir, paths=None):
         """Extract files from tar archives."""
         pass
+
+    def _verify(self, archive: ArchiveJob) -> bool:
+        """Return True only if the destination already fully satisfies the manifest."""
+
+        paths = archive.create_archive()
+        for src_path, dst_path, expected_size in paths:
+            if not self._entry_satisfied(dst_path, expected_size):
+                logger.debug(f"Missing or incorrect {dst_path} (expected size {expected_size})")
+                return False
+        return True

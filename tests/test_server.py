@@ -69,6 +69,7 @@ class TestMain(unittest.TestCase):
             with (
                 unittest.mock.patch.object(server_module, "_archive_worker_loop", lambda: None),
                 unittest.mock.patch.object(server_module, "_status_worker_loop", lambda: None),
+                unittest.mock.patch.object(server_module, "reconcile_orphaned_archives"),
                 unittest.mock.patch("archivist.database.create_all") as mock_create_all,
             ):
                 async with app.router.lifespan_context(app):
@@ -184,11 +185,13 @@ class TestLifespan(unittest.TestCase):
         with (
             unittest.mock.patch.object(server_module, "_archive_worker_loop", _fake_archive_loop),
             unittest.mock.patch.object(server_module, "_status_worker_loop", _fake_status_loop),
+            unittest.mock.patch.object(server_module, "reconcile_orphaned_archives") as mock_reconcile,
             unittest.mock.patch("archivist.database.create_all") as mock_create_all,
         ):
             asyncio.run(_run())
 
         mock_create_all.assert_called_once()
+        mock_reconcile.assert_called_once()
         self.assertIn("archive", submitted)
         self.assertIn("status", submitted)
         self.assertTrue(server_module._archive_stop_event.is_set())

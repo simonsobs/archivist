@@ -13,7 +13,12 @@ from conftest import make_archive_item, make_manifest_entry
 
 from archivist.orm.archive import Archive
 from archivist.queue import get_status_queue
-from archivist.tasks.archive import process_status_queue, start_archive
+from archivist.storage.storage_disk import StorageDisk
+from archivist.tasks.archive import (
+    process_status_queue,
+    reconcile_orphaned_archives,
+    start_archive,
+)
 
 
 @pytest.mark.usefixtures("db_session")
@@ -163,6 +168,103 @@ class TestProcessStatusQueue(TestTasksArchiveBase):
             process_status_queue()
 
         mock_sleep.assert_called_once_with(1)
+
+
+class TestReconcileOrphanedArchives(TestTasksArchiveBase):
+    def _make_orphan(self, manifest_id, *, content="hello", size=None, retries=0):
+        """Create a source file and a consumed-but-incomplete Archive row (an orphan)."""
+        source = self.local_root / f"{manifest_id}.txt"
+        source.write_text(content)
+        if size is None:
+            size = len(content)
+
+        item = make_archive_item(
+            self.session,
+            manifest_id=manifest_id,
+            archive_root=str(self.archive_root),
+            entries=[make_manifest_entry(instance_path=str(source), size=size)],
+        )
+        item.consumed = True
+        item.retries = retries
+        self.session.commit()
+        return item, source
+
+    def _dest_for(self, source):
+        return self.archive_root / source.relative_to(self.local_root)
+
+    def test_completes_orphan_already_present_at_destination(self):
+        item, source = self._make_orphan("verified", content="hello")
+        dest = self._dest_for(source)
+        dest.write_text("hello")  # 5 bytes, matches manifest size
+
+        reconcile_orphaned_archives()
+
+        self.session.expire_all()
+        item = self.session.query(Archive).filter_by(manifest_id="verified").one()
+        self.assertTrue(item.completed)
+        self.assertFalse(item.failed)
+        self.assertEqual(item.archive_path, str(self.archive_root))
+
+    def test_requeues_orphan_not_present_and_under_retry_cap(self):
+        self._make_orphan("requeue-me", content="hello", retries=0)
+        # No destination file -> verify() is False.
+
+        reconcile_orphaned_archives()
+
+        self.session.expire_all()
+        item = self.session.query(Archive).filter_by(manifest_id="requeue-me").one()
+        self.assertFalse(item.consumed)
+        self.assertIsNone(item.consumed_time)
+        self.assertEqual(item.retries, 1)
+        self.assertFalse(item.completed)
+
+    def test_fails_orphan_at_or_over_retry_cap(self):
+        cap = self.settings.max_archive_retries
+        self._make_orphan("give-up", content="hello", retries=cap)
+        # No destination file -> verify() is False, and retries == cap.
+
+        reconcile_orphaned_archives()
+
+        self.session.expire_all()
+        item = self.session.query(Archive).filter_by(manifest_id="give-up").one()
+        self.assertTrue(item.completed)
+        self.assertTrue(item.failed)
+        self.assertEqual(item.retries, cap)  # not requeued, so retries did not increment
+
+    def test_leaves_non_orphan_rows_untouched(self):
+        # A fresh, unconsumed row is not an orphan and must not be reconciled.
+        make_archive_item(
+            self.session,
+            manifest_id="fresh",
+            archive_root=str(self.archive_root),
+        )
+
+        reconcile_orphaned_archives()
+
+        self.session.expire_all()
+        item = self.session.query(Archive).filter_by(manifest_id="fresh").one()
+        self.assertFalse(item.consumed)
+        self.assertFalse(item.completed)
+
+    def test_one_bad_orphan_does_not_abort_the_sweep(self):
+        # First orphan is fine and should be requeued; second orphan's verify blows up.
+        self._make_orphan("good", content="hello", retries=0)
+        self._make_orphan("bad", content="hello", retries=0)
+
+        real_verify = StorageDisk.verify
+
+        def flaky_verify(self, archive):
+            if archive.manifest_id == "bad":
+                raise RuntimeError("boom")
+            return real_verify(self, archive)
+
+        with unittest.mock.patch.object(StorageDisk, "verify", flaky_verify):
+            reconcile_orphaned_archives()
+
+        self.session.expire_all()
+        good = self.session.query(Archive).filter_by(manifest_id="good").one()
+        self.assertEqual(good.retries, 1)  # good was still processed
+        self.assertFalse(good.consumed)
 
 
 if __name__ == "__main__":

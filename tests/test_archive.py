@@ -45,7 +45,7 @@ class TestCreateArchivePosix(unittest.TestCase):
     def test_builds_src_dst_pairs_relative_to_local_root(self):
         manifest = {
             "store_files": [
-                make_manifest_entry(instance_path="/local/sub/file.txt"),
+                make_manifest_entry(instance_path="/local/sub/file.txt", size=4096),
             ]
         }
         archive = ArchiveJob(
@@ -58,9 +58,10 @@ class TestCreateArchivePosix(unittest.TestCase):
         pairs = archive.create_archive()
 
         self.assertEqual(len(pairs), 1)
-        src, dst = pairs[0]
+        src, dst, size = pairs[0]
         self.assertEqual(src, Path("/local/sub/file.txt"))
         self.assertEqual(dst, Path("/archive/sub/file.txt"))
+        self.assertEqual(size, 4096)
 
     def test_multiple_entries_preserve_order(self):
         manifest = {
@@ -73,7 +74,20 @@ class TestCreateArchivePosix(unittest.TestCase):
 
         pairs = archive.create_archive()
 
-        self.assertEqual([str(src) for src, _ in pairs], ["/local/a.txt", "/local/b.txt"])
+        self.assertEqual([str(src) for src, _, _ in pairs], ["/local/a.txt", "/local/b.txt"])
+
+    def test_includes_manifest_size_per_entry(self):
+        manifest = {
+            "store_files": [
+                make_manifest_entry(instance_path="/local/a.txt", size=10),
+                make_manifest_entry(instance_path="/local/b.txt", size=20),
+            ]
+        }
+        archive = ArchiveJob(manifest=manifest, local_root="/local", archive_root="/archive", type="posix")
+
+        pairs = archive.create_archive()
+
+        self.assertEqual([size for _, _, size in pairs], [10, 20])
 
     def test_empty_store_files_returns_empty_list(self):
         archive = ArchiveJob(manifest={"store_files": []}, local_root="/local", archive_root="/archive", type="posix")

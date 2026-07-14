@@ -75,7 +75,7 @@ class Archive(db.Base):
         stmt = (
             select(cls)
             .options(joinedload(cls.manifest).selectinload(Manifest.entries))
-            .with_for_update(skip_locked=True)
+            .with_for_update(skip_locked=True, of=cls)
             .filter_by(consumed=False, completed=False)
             .order_by(cls.created_time.asc())
         )
@@ -85,6 +85,21 @@ class Archive(db.Base):
             item.consumed_time = datetime.datetime.now(datetime.timezone.utc)
             session.commit()
         return item
+
+    def requeue(self, session: Session):
+        """
+        Mark this queue item as unconsumed so it can be picked up again.
+
+        Parameters
+        ----------
+        session : Session
+            The database session to use.
+        """
+
+        self.consumed = False
+        self.consumed_time = None
+        self.retries += 1
+        session.commit()
 
     def complete(self, session: Session):
         """

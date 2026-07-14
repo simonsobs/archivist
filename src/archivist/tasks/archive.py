@@ -106,3 +106,51 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
         loguru.logger.error(f"Error processing status queue: {e}")
         sleep(1)  # Sleep for a short duration to avoid busy waiting
         return True
+
+
+def reconcile_orphaned_archives(
+    session_maker: Callable[[], Session] = get_session,
+) -> None:
+    """
+    On startup, re-drive archive jobs orphaned by a crash.
+
+    A row that was consumed but never completed lost its in-memory Future when
+    the process died. For each such row: verify the destination against the
+    manifest; if already satisfied, complete it; otherwise requeue it (up to
+    settings.max_archive_retries) so the normal worker loop re-runs the now
+    idempotent store(), or fail it once the retry cap is hit.
+    """
+    settings = get_settings()
+    session = session_maker()
+    try:
+        orphans = session.query(Archive).filter_by(consumed=True, completed=False).all()
+        for item in orphans:
+            try:
+                manifest = {
+                    "store_files": [
+                        ManifestEntry.model_validate(entry, from_attributes=True).model_dump()
+                        for entry in item.manifest.entries
+                    ]
+                }
+                archive = ArchiveJob(
+                    manifest=manifest,
+                    manifest_id=item.manifest_id,
+                    local_root=settings.local_root,
+                    archive_root=item.archive_root,
+                    type=settings.archive_type,
+                )
+                storage = storage_factory[settings.archive_type](settings=settings)
+                if storage.verify(archive):
+                    item.archive_path = archive.archive_root
+                    item.complete(session)
+                    loguru.logger.info(f"Reconciled orphan {item.manifest_id}: already complete.")
+                elif item.retries >= settings.max_archive_retries:
+                    loguru.logger.error(f"Orphan {item.manifest_id} exceeded max_archive_retries; failing.")
+                    item.fail(session)
+                else:
+                    item.requeue(session)
+                    loguru.logger.info(f"Requeued orphan {item.manifest_id} (retry {item.retries}).")
+            except Exception:
+                loguru.logger.exception(f"Failed to reconcile orphan {getattr(item, 'manifest_id', '?')}; skipping.")
+    finally:
+        session.close()

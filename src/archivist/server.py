@@ -8,6 +8,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from archivist.tasks.archive import reconcile_orphaned_archives
+
 from .settings import server_settings
 
 _archive_stop_event = threading.Event()
@@ -50,6 +52,8 @@ async def slack_post_at_startup_shutdown(app: FastAPI):
     logger.info("Archivist server starting up")
 
     create_all()
+
+    reconcile_orphaned_archives()
 
     thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="worker")
     thread_pool.submit(_archive_worker_loop)
