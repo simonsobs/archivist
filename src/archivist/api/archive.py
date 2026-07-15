@@ -24,6 +24,7 @@ def archive(
     # Here you would implement the logic to handle the archiving process
     # For now, we will just return a dummy response
 
+    manifest_id = manifest_request.manifest_id
     total_size = sum(entry.size for entry in manifest_request.store_files)
     if total_size > settings.maximal_size_bytes:  # Example size limit of 1GB
         response.status_code = 400
@@ -32,16 +33,39 @@ def archive(
         )
         return ManifestFailedResponse(error="The total size of the files exceeds the allowed limit.")
 
-    manifest_id = uuid.uuid4()
+    # Manifests are immutable and identified by the Librarian-minted
+    # manifest_id, so that id doubles as an idempotency key. Archivist queues
+    # asynchronously over HTTP and returns immediately, so a lost response
+    # will make the Librarian retry; a resend must be safe. Fingerprint the
+    # incoming payload as the sorted (name, checksum) of its files.
+    incoming_files = sorted((entry.name, entry.checksum) for entry in manifest_request.store_files)
 
-    # get_or_create adds the Manifest to the session on the create path and
-    # returns it; attach entries and the archive job through relationships so
-    # the FKs resolve and a single commit cascade-persists everything.
     manifest = Manifest.get_or_create(
         session,
-        manifest_id=str(manifest_id),
+        manifest_id=manifest_id,
         librarian_name=manifest_request.librarian_name,
     )
+
+    if manifest.entries:
+        existing_files = sorted((entry.name, entry.checksum) for entry in manifest.entries)
+        if existing_files == incoming_files:
+            # Same id, same content: the retry case. Noop; report the id and
+            # leave the already-queued archive untouched.
+            logger.info(f"Manifest {manifest_id} already received; returning existing archive job.")
+            return ManifestResponse(manifest_id=str(manifest_id))
+        # Same id, different content: immutability violated. Reject loudly
+        # rather than silently mutating the manifest or dropping the change.
+        response.status_code = 409
+        logger.error(
+            f"Manifest {manifest_id} resubmitted with different content from librarian "
+            f"'{manifest_request.librarian_name}'; manifests are immutable."
+        )
+        return ManifestFailedResponse(
+            error="A manifest with this id already exists with different content; manifests are immutable."
+        )
+
+    # Attach entries and the archive job through relationships so the FKs
+    # resolve and a single commit cascade-persists everything.
     manifest.entries = [
         ManifestEntry(
             name=entry.name,

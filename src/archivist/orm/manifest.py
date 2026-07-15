@@ -12,7 +12,7 @@ class Manifest(db.Base):
     __tablename__ = "manifest"
 
     id = db.Column(db.String(36), primary_key=True)
-    "Archivist-minted uuid4 identifying this manifest."
+    "ID identifying this manifest."
     librarian_name = db.Column(db.String(256), nullable=False)
     "The name of the Librarian that generated this manifest."
     created_time = db.Column(db.DateTime, nullable=False)

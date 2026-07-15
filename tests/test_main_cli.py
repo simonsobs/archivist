@@ -6,6 +6,7 @@
 import os
 import unittest
 import unittest.mock
+from pathlib import Path
 
 import pytest
 import requests
@@ -60,8 +61,10 @@ class TestMainRequiresConfig(unittest.TestCase):
 
 
 class TestArchiveCommand:
-    def test_archive_single_file_success(self, runner, cli_config_path, tmp_path):
-        source = tmp_path / "file.txt"
+    def test_archive_single_file_success(self, runner, cli_config_path, settings):
+        # The CLI names files by their path relative to settings.local_root,
+        # so sources must live under it.
+        source = Path(settings.local_root) / "file.txt"
         source.write_text("hello world")
 
         fake_response = unittest.mock.Mock(status_code=200)
@@ -80,10 +83,10 @@ class TestArchiveCommand:
         assert len(body["store_files"]) == 1
         assert body["store_files"][0]["name"] == "file.txt"
 
-    def test_archive_computes_correct_checksum(self, runner, cli_config_path, tmp_path):
+    def test_archive_computes_correct_checksum(self, runner, cli_config_path, settings):
         import hashlib
 
-        source = tmp_path / "file.txt"
+        source = Path(settings.local_root) / "file.txt"
         source.write_bytes(b"some content to checksum")
 
         fake_response = unittest.mock.Mock(status_code=200)
@@ -96,8 +99,8 @@ class TestArchiveCommand:
         expected = hashlib.sha256(b"some content to checksum").hexdigest()
         assert kwargs["json"]["store_files"][0]["checksum"] == expected
 
-    def test_archive_directory_walks_all_files(self, runner, cli_config_path, tmp_path):
-        source_dir = tmp_path / "adir"
+    def test_archive_directory_walks_all_files(self, runner, cli_config_path, settings):
+        source_dir = Path(settings.local_root) / "adir"
         (source_dir / "sub").mkdir(parents=True)
         (source_dir / "a.txt").write_text("a")
         (source_dir / "sub" / "b.txt").write_text("b")
@@ -111,10 +114,12 @@ class TestArchiveCommand:
         assert result.exit_code == 0
         _, kwargs = mock_post.call_args
         names = sorted(entry["name"] for entry in kwargs["json"]["store_files"])
-        assert names == ["a.txt", "b.txt"]
+        # Names are paths relative to settings.local_root, preserving the full
+        # subdirectory structure rather than bare basenames.
+        assert names == ["adir/a.txt", "adir/sub/b.txt"]
 
-    def test_archive_uses_custom_librarian_name(self, runner, cli_config_path, tmp_path):
-        source = tmp_path / "file.txt"
+    def test_archive_uses_custom_librarian_name(self, runner, cli_config_path, settings):
+        source = Path(settings.local_root) / "file.txt"
         source.write_text("hello")
 
         fake_response = unittest.mock.Mock(status_code=200)
@@ -138,8 +143,8 @@ class TestArchiveCommand:
         assert kwargs["json"]["librarian_name"] == "custom-librarian"
         assert kwargs["json"]["store_files"][0]["uploader"] == "custom-librarian"
 
-    def test_archive_server_error_prints_error_and_exits_cleanly(self, runner, cli_config_path, tmp_path):
-        source = tmp_path / "file.txt"
+    def test_archive_server_error_prints_error_and_exits_cleanly(self, runner, cli_config_path, settings):
+        source = Path(settings.local_root) / "file.txt"
         source.write_text("hello")
 
         fake_response = unittest.mock.Mock(status_code=400)
@@ -151,8 +156,8 @@ class TestArchiveCommand:
         assert result.exit_code == 0
         assert "Archive failed: too big" in result.output
 
-    def test_archive_connection_error_propagates(self, runner, cli_config_path, tmp_path):
-        source = tmp_path / "file.txt"
+    def test_archive_connection_error_propagates(self, runner, cli_config_path, settings):
+        source = Path(settings.local_root) / "file.txt"
         source.write_text("hello")
 
         with unittest.mock.patch.object(

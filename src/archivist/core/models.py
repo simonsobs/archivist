@@ -33,6 +33,9 @@ class ManifestEntry(BaseModel):
 
 
 class ManifestRequest(BaseModel):
+    manifest_id: str
+    "The ID of the manifest."
+
     librarian_name: str
     "The name of the librarian that generated this manifest."
 

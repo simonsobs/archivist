@@ -21,6 +21,7 @@ from archivist.api import health_router
 from archivist.api import router as api_router
 from archivist.database import yield_session
 from archivist.orm.archive import Archive
+from archivist.orm.manifest import Manifest
 from archivist.settings import get_settings
 
 
@@ -62,6 +63,7 @@ class TestHealthEndpoint(TestApiBase):
 class TestArchiveEndpoint(TestApiBase):
     def test_archive_valid_manifest_returns_manifest_id(self):
         payload = {
+            "manifest_id": "m-valid",
             "librarian_name": "test-librarian",
             "store_files": [make_manifest_entry_json()],
         }
@@ -74,6 +76,7 @@ class TestArchiveEndpoint(TestApiBase):
 
     def test_archive_persists_queue_item(self):
         payload = {
+            "manifest_id": "m-persist",
             "librarian_name": "test-librarian",
             "store_files": [make_manifest_entry_json()],
         }
@@ -89,6 +92,7 @@ class TestArchiveEndpoint(TestApiBase):
         self.settings.maximal_size_bytes = 100
 
         payload = {
+            "manifest_id": "m-oversize",
             "librarian_name": "test-librarian",
             "store_files": [make_manifest_entry_json(size=1_000_000)],
         }
@@ -99,7 +103,7 @@ class TestArchiveEndpoint(TestApiBase):
         self.assertIn("error", response.json())
 
     def test_archive_empty_store_files_succeeds(self):
-        payload = {"librarian_name": "test-librarian", "store_files": []}
+        payload = {"manifest_id": "m-empty", "librarian_name": "test-librarian", "store_files": []}
 
         response = self.client.post("/api/v1/archive", json=payload)
 
@@ -111,6 +115,88 @@ class TestArchiveEndpoint(TestApiBase):
         response = self.client.post("/api/v1/archive", json=payload)
 
         self.assertEqual(response.status_code, 422)
+
+
+class TestArchiveIdempotency(TestApiBase):
+    """
+    A manifest is immutable and identified by the Librarian-minted
+    `manifest_id`, which therefore doubles as an idempotency key. Resubmitting
+    the same id must be safe: identical content is a noop, differing content is
+    a conflict. See `archivist.api.archive.archive`.
+    """
+
+    def _post(self, manifest_id, store_files, **extra):
+        payload = {
+            "manifest_id": manifest_id,
+            "librarian_name": "test-librarian",
+            "store_files": store_files,
+            **extra,
+        }
+        return self.client.post("/api/v1/archive", json=payload)
+
+    def test_resubmit_same_content_is_noop(self):
+        files = [make_manifest_entry_json(name="a.txt", checksum="a" * 64)]
+
+        first = self._post("m-dup", files)
+        second = self._post("m-dup", files)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        # Same id echoed back both times.
+        self.assertEqual(first.json()["manifest_id"], "m-dup")
+        self.assertEqual(second.json()["manifest_id"], "m-dup")
+        # The noop path must not enqueue a second archive job for the manifest.
+        self.assertEqual(self.session.query(Archive).filter_by(manifest_id="m-dup").count(), 1)
+
+    def test_resubmit_reordered_content_is_noop(self):
+        a = make_manifest_entry_json(name="a.txt", checksum="a" * 64)
+        b = make_manifest_entry_json(name="b.txt", checksum="b" * 64)
+
+        first = self._post("m-order", [a, b])
+        second = self._post("m-order", [b, a])
+
+        # Content is compared as a sorted (name, checksum) set, so file order
+        # in the request must not matter.
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(self.session.query(Archive).filter_by(manifest_id="m-order").count(), 1)
+
+    def test_resubmit_different_content_returns_409(self):
+        original = [make_manifest_entry_json(name="a.txt", checksum="a" * 64)]
+        changed = [make_manifest_entry_json(name="a.txt", checksum="b" * 64)]
+
+        first = self._post("m-conflict", original)
+        second = self._post("m-conflict", changed)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+        self.assertIn("error", second.json())
+
+    def test_conflict_leaves_original_manifest_unchanged(self):
+        original = [make_manifest_entry_json(name="a.txt", checksum="a" * 64)]
+        changed = [make_manifest_entry_json(name="a.txt", checksum="b" * 64)]
+
+        self._post("m-immutable", original)
+        self._post("m-immutable", changed)
+
+        self.session.expire_all()
+        manifest = self.session.get(Manifest, "m-immutable")
+        # Immutability: the rejected resubmit must not mutate stored entries...
+        self.assertEqual(len(manifest.entries), 1)
+        self.assertEqual(manifest.entries[0].checksum, "a" * 64)
+        # ...nor enqueue a second archive job.
+        self.assertEqual(self.session.query(Archive).filter_by(manifest_id="m-immutable").count(), 1)
+
+    def test_distinct_ids_create_distinct_manifests(self):
+        files = [make_manifest_entry_json(name="a.txt", checksum="a" * 64)]
+
+        first = self._post("m-one", files)
+        second = self._post("m-two", files)
+
+        # Same content under different ids is not a duplicate; both proceed.
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(self.session.query(Archive).count(), 2)
 
 
 class TestExtractEndpoint(TestApiBase):
@@ -126,6 +212,7 @@ class TestExtractEndpoint(TestApiBase):
         no_raise_client = TestClient(self.app, raise_server_exceptions=False)
 
         payload = {
+            "manifest_id": "m-extract",
             "librarian_name": "test-librarian",
             "store_files": [make_manifest_entry_json()],
         }

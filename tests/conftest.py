@@ -167,6 +167,7 @@ def manifest_entry_data():
 @pytest.fixture
 def manifest_request_data(manifest_entry_data):
     return {
+        "manifest_id": "m1",
         "librarian_name": "test-librarian",
         "store_files": [manifest_entry_data],
     }

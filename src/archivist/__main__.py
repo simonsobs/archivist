@@ -42,8 +42,9 @@ def main(ctx, config):
     help="The name of the librarian archiving the file",
     default="librarian",
 )
+@click.option("--manifest-id", type=str, required=False, help="The ID of the manifest to use for archiving")
 @click.pass_context
-def archive(ctx, source_path, librarian_name):
+def archive(ctx, source_path, librarian_name, manifest_id):
     """Command to archive a file.
     For example: `archivist -c config archive "--source-path /path/to/source --dest-path /path/to/dest"`
     """
@@ -53,7 +54,7 @@ def archive(ctx, source_path, librarian_name):
 
     settings = get_settings()
 
-    source_root = Path(source_path)
+    source_root = Path(source_path).absolute()
 
     if source_root.is_file():
         files = [source_root]
@@ -67,11 +68,11 @@ def archive(ctx, source_path, librarian_name):
 
     for file_path in files:
         stat = file_path.stat()
-        relative_path = file_path.relative_to(walk_root)
+        relative_path = file_path.relative_to(settings.local_root)
         loguru.logger.info(f"Archiving file: {file_path}, relative path: {relative_path}")
         store_files.append(
             ManifestEntry(
-                name=file_path.name,
+                name=str(relative_path),
                 create_time=datetime.fromtimestamp(stat.st_ctime),
                 size=stat.st_size,
                 checksum=_checksum(file_path),
@@ -83,8 +84,10 @@ def archive(ctx, source_path, librarian_name):
                 outgoing_transfer_id=0,
             )
         )
+    if not manifest_id:
+        manifest_id = str(datetime.now().timestamp()).replace(".", "")
 
-    manifest_request = ManifestRequest(librarian_name=librarian_name, store_files=store_files)
+    manifest_request = ManifestRequest(manifest_id=manifest_id, librarian_name=librarian_name, store_files=store_files)
     try:
         req = requests.post(
             f"http://{settings.host}:{settings.port}/api/v1/archive", json=manifest_request.model_dump(mode="json")

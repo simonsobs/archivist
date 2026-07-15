@@ -38,6 +38,7 @@ class TestManifestEntry(unittest.TestCase):
 class TestManifestRequest(unittest.TestCase):
     def test_valid_request_constructs(self):
         request = ManifestRequest(
+            manifest_id="m1",
             librarian_name="lib",
             store_files=[make_manifest_entry(), make_manifest_entry(name="other.txt")],
         )
@@ -45,7 +46,7 @@ class TestManifestRequest(unittest.TestCase):
         self.assertEqual(len(request.store_files), 2)
 
     def test_empty_store_files_is_allowed(self):
-        request = ManifestRequest(librarian_name="lib", store_files=[])
+        request = ManifestRequest(manifest_id="m1", librarian_name="lib", store_files=[])
         self.assertEqual(request.store_files, [])
 
     def test_missing_librarian_name_raises(self):
