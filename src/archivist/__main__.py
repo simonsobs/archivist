@@ -39,8 +39,8 @@ def main(ctx, config):
     "--librarian-name",
     type=str,
     required=False,
-    help="The name of the librarian archiving the file",
-    default="librarian",
+    help="The name of the librarian archiving the file (defaults to the reserved CLI name, which never triggers a callback)",
+    default=None,
 )
 @click.option("--manifest-id", type=str, required=False, help="The ID of the manifest to use for archiving")
 @click.pass_context
@@ -53,6 +53,11 @@ def archive(ctx, source_path, librarian_name, manifest_id):
     click.echo(f"Archiving file from {source_path}")
 
     settings = get_settings()
+
+    # Unnamed CLI jobs archive under the reserved sentinel name, so the
+    # completed job is never reported back to a real Librarian.
+    if librarian_name is None:
+        librarian_name = settings.cli_librarian_name
 
     source_root = Path(source_path).absolute()
 
@@ -120,6 +125,36 @@ def extract(ctx, archive, dest_path):
     For example: `slurmise record "-o 2 -i 3 -m fast"`
     """
     pass
+
+
+@main.command()
+@click.option("--manifest-id", type=str, required=True, help="The manifest whose callback should be reset to pending")
+@click.pass_context
+def resend_callback(ctx, manifest_id):
+    """Reset the Librarian callback to pending for a manifest whose callback failed or was exhausted.
+
+    Resets the callback bookkeeping on the archive row; the server's callback
+    worker picks it up from there. Useful after correcting a Librarian's
+    configuration. Runs against the database directly, so the server does not
+    need to be reachable.
+    """
+
+    from archivist.database import get_session
+    from archivist.orm.archive import Archive
+
+    session = get_session()
+    try:
+        item = session.query(Archive).filter_by(manifest_id=manifest_id).first()
+        if item is None or not item.completed:
+            click.secho("[ERROR]", fg="red", nl=False, err=True)
+            click.echo(f" No completed archive for manifest {manifest_id}", err=True)
+            return
+        item.callback_pending()
+        session.commit()
+    finally:
+        session.close()
+
+    click.echo(f"Callback for {manifest_id} reset to pending.")
 
 
 @main.command()

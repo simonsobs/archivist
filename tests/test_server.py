@@ -176,6 +176,9 @@ class TestLifespan(unittest.TestCase):
         def _fake_status_loop():
             submitted.append("status")
 
+        def _fake_callback_loop():
+            submitted.append("callback")
+
         async def _run():
             app = unittest.mock.Mock()
             async with server_module.slack_post_at_startup_shutdown(app):
@@ -185,6 +188,7 @@ class TestLifespan(unittest.TestCase):
         with (
             unittest.mock.patch.object(server_module, "_archive_worker_loop", _fake_archive_loop),
             unittest.mock.patch.object(server_module, "_status_worker_loop", _fake_status_loop),
+            unittest.mock.patch.object(server_module, "_callback_worker_loop", _fake_callback_loop),
             unittest.mock.patch.object(server_module, "reconcile_orphaned_archives") as mock_reconcile,
             unittest.mock.patch("archivist.database.create_all") as mock_create_all,
         ):
@@ -194,6 +198,7 @@ class TestLifespan(unittest.TestCase):
         mock_reconcile.assert_called_once()
         self.assertIn("archive", submitted)
         self.assertIn("status", submitted)
+        self.assertIn("callback", submitted)
         self.assertTrue(server_module._archive_stop_event.is_set())
 
 

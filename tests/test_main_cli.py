@@ -79,7 +79,9 @@ class TestArchiveCommand:
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
         body = kwargs["json"]
-        assert body["librarian_name"] == "librarian"
+        # No --librarian-name given, so the job runs under the reserved CLI
+        # sentinel and will never trigger a Librarian callback.
+        assert body["librarian_name"] == settings.cli_librarian_name
         assert len(body["store_files"]) == 1
         assert body["store_files"][0]["name"] == "file.txt"
 
@@ -189,6 +191,65 @@ class TestExtractCommand:
 
         assert result.exit_code != 0
         assert isinstance(result.exception, TypeError)
+
+
+class TestResendCallbackCommand:
+    @staticmethod
+    def _make_completed_archive(db_session, archive_root, *, callback_state, attempts, completed=True):
+        from datetime import datetime, timezone
+
+        from conftest import make_archive_item
+
+        item = make_archive_item(db_session, manifest_id="m1", archive_root=str(archive_root))
+        item.completed = completed
+        item.completed_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        item.callback_state = callback_state
+        item.callback_attempts = attempts
+        item.callback_last_error = "boom"
+        db_session.commit()
+        return item
+
+    def test_resets_an_exhausted_callback_to_pending(self, runner, cli_config_path, db_session, archive_root):
+        from archivist.orm.archive import Archive
+
+        self._make_completed_archive(db_session, archive_root, callback_state="exhausted", attempts=5)
+
+        result = runner.invoke(main, ["-c", cli_config_path, "resend-callback", "--manifest-id", "m1"])
+
+        assert result.exit_code == 0
+        assert "reset to pending" in result.output
+
+        db_session.expire_all()
+        item = db_session.query(Archive).filter_by(manifest_id="m1").one()
+        assert item.callback_state == "pending"
+        assert item.callback_attempts == 0
+        assert item.callback_next_retry is not None
+        assert item.callback_last_error is None
+
+    def test_unknown_manifest_reports_an_error(self, runner, cli_config_path, db_session):
+        result = runner.invoke(main, ["-c", cli_config_path, "resend-callback", "--manifest-id", "nope"])
+
+        assert result.exit_code == 0
+        assert "No completed archive for manifest nope" in result.output
+
+    def test_incomplete_archive_is_not_reset(self, runner, cli_config_path, db_session, archive_root):
+        from archivist.orm.archive import Archive
+
+        self._make_completed_archive(db_session, archive_root, callback_state="pending", attempts=0, completed=False)
+
+        result = runner.invoke(main, ["-c", cli_config_path, "resend-callback", "--manifest-id", "m1"])
+
+        assert result.exit_code == 0
+        assert "No completed archive for manifest m1" in result.output
+
+        db_session.expire_all()
+        item = db_session.query(Archive).filter_by(manifest_id="m1").one()
+        assert item.callback_next_retry is None
+
+    def test_manifest_id_is_required(self, runner, cli_config_path):
+        result = runner.invoke(main, ["-c", cli_config_path, "resend-callback"])
+
+        assert result.exit_code == 2
 
 
 class TestStartServerCommand:

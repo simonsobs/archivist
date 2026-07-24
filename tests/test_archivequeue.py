@@ -37,6 +37,16 @@ class TestNewItem(TestArchiveQueueBase):
         fetched = self.session.query(Archive).filter_by(manifest_id="m1").one()
         self.assertEqual(fetched.archive_root, "/root")
 
+    def test_callback_columns_default_on_insert(self):
+        make_archive_item(self.session, manifest_id="m1", archive_root="/root")
+
+        fetched = self.session.query(Archive).filter_by(manifest_id="m1").one()
+        self.assertEqual(fetched.callback_state, "pending")
+        self.assertEqual(fetched.callback_attempts, 0)
+        self.assertIsNone(fetched.callback_last_attempt)
+        self.assertIsNone(fetched.callback_next_retry)
+        self.assertIsNone(fetched.callback_last_error)
+
     def test_manifest_id_must_be_unique(self):
         from sqlalchemy.exc import IntegrityError
 

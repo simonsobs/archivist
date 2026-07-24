@@ -39,6 +39,25 @@ def _status_worker_loop():
             logger.exception("Archive worker iteration failed")
 
 
+def _callback_worker_loop():
+    from loguru import logger
+
+    from .settings import get_settings
+    from .tasks.callback import process_callbacks
+
+    poll_interval = get_settings().callback_poll_interval_seconds
+    while not _archive_stop_event.is_set():
+        try:
+            did_work = process_callbacks()
+        except Exception:
+            logger.exception("Callback worker iteration failed")
+            did_work = False
+        # The callback queue is backoff-driven, so idle between polls instead
+        # of spinning when there is nothing due.
+        if not did_work:
+            _archive_stop_event.wait(poll_interval)
+
+
 @asynccontextmanager
 async def slack_post_at_startup_shutdown(app: FastAPI):
     """
@@ -58,6 +77,7 @@ async def slack_post_at_startup_shutdown(app: FastAPI):
     thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="worker")
     thread_pool.submit(_archive_worker_loop)
     thread_pool.submit(_status_worker_loop)
+    thread_pool.submit(_callback_worker_loop)
     yield
 
     logger.info("Archivist server shutting down")

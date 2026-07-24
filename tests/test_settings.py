@@ -92,6 +92,32 @@ class TestSecretFiles(unittest.TestCase):
             self.assertEqual(settings.database_password, "db-secret")
 
 
+class TestLibrarianCallbackConfig(unittest.TestCase):
+    def test_librarians_parse_from_dict(self):
+        settings = Settings(librarians={"lib-a": {"url": "http://librarian.example/"}})
+
+        self.assertEqual(settings.librarians["lib-a"].url, "http://librarian.example/")
+        self.assertIsNone(settings.librarians["lib-a"].auth_token)
+
+    def test_auth_token_read_from_file(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            token_path = Path(tmp_dir) / "token.txt"
+            token_path.write_text("bearer-secret\n")
+
+            settings = Settings(
+                librarians={"lib-a": {"url": "http://librarian.example/", "auth_token_file": str(token_path)}}
+            )
+
+            self.assertEqual(settings.librarians["lib-a"].auth_token, "bearer-secret")
+
+    def test_librarian_named_like_cli_sentinel_is_rejected(self):
+        with self.assertRaises(ValueError):
+            Settings(cli_librarian_name="__cli__", librarians={"__cli__": {"url": "http://x/"}})
+
+
 class TestGetSettings(unittest.TestCase):
     def setUp(self):
         self._original = settings_module._settings

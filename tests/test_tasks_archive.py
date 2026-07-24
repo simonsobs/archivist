@@ -267,5 +267,48 @@ class TestReconcileOrphanedArchives(TestTasksArchiveBase):
         self.assertFalse(good.consumed)
 
 
+class TestCompletionCallbackIntent(TestTasksArchiveBase):
+    """A successful completion marks the Librarian callback pending (or skips it for CLI jobs)."""
+
+    def _archive_to_completion(self, manifest_id, librarian_name):
+        source = self.local_root / f"{manifest_id}.txt"
+        source.write_text("hello")
+        make_archive_item(
+            self.session,
+            manifest_id=manifest_id,
+            librarian_name=librarian_name,
+            archive_root=str(self.archive_root),
+            entries=[make_manifest_entry(instance_path=str(source))],
+        )
+
+        start_archive(librarian_name=librarian_name)
+
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            process_status_queue()
+            self.session.expire_all()
+            item = self.session.query(Archive).filter_by(manifest_id=manifest_id).one()
+            if item.completed:
+                break
+            time.sleep(0.05)
+        return item
+
+    def test_real_librarian_job_is_marked_pending_for_callback(self):
+        item = self._archive_to_completion("real", "test-librarian")
+
+        self.assertTrue(item.completed)
+        self.assertFalse(item.failed)
+        self.assertEqual(item.callback_state, "pending")
+        self.assertEqual(item.callback_attempts, 0)
+        self.assertIsNotNone(item.callback_next_retry)
+
+    def test_cli_job_is_marked_skipped(self):
+        item = self._archive_to_completion("cli", self.settings.cli_librarian_name)
+
+        self.assertTrue(item.completed)
+        self.assertEqual(item.callback_state, "skipped")
+        self.assertIsNone(item.callback_next_retry)
+
+
 if __name__ == "__main__":
     unittest.main()

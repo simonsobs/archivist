@@ -59,6 +59,16 @@ class Archive(db.Base):
     "The time the job was marked completed."
     failed = db.Column(db.Boolean, default=False)
     "Whether the job failed, and that is why it is completed."
+    callback_state = db.Column(db.String(16), nullable=False, default="pending")
+    "pending | sent | failed | exhausted | skipped"
+    callback_attempts = db.Column(db.Integer, nullable=False, default=0)
+    "Number of callback POST attempts made so far."
+    callback_last_attempt = db.Column(db.DateTime, nullable=True)
+    "When the most recent callback attempt was made."
+    callback_next_retry = db.Column(db.DateTime, nullable=True)
+    "Earliest time the next callback attempt may run (backoff)."
+    callback_last_error = db.Column(db.String(1024), nullable=True)
+    "Message from the most recent failed attempt (missing config or POST error)."
 
     @classmethod
     def new_item(cls, manifest: "Manifest", archive_root: str) -> "Archive":
@@ -131,3 +141,40 @@ class Archive(db.Base):
         self.completed_time = datetime.datetime.now(datetime.timezone.utc)
 
         session.commit()
+
+    def callback_pending(self):
+        """Mark this archive as owing a Librarian callback, due immediately.
+
+        Resets the delivery bookkeeping so a fresh (or manually reset) row is
+        picked up by the callback worker on its next poll. Does not commit;
+        the caller owns the transaction.
+        """
+
+        self.callback_state = "pending"
+        self.callback_attempts = 0
+        self.callback_next_retry = datetime.datetime.now(datetime.timezone.utc)
+        self.callback_last_error = None
+
+    def skip_callback(self):
+        """Mark this archive as owing no callback (e.g. CLI-submitted jobs)."""
+
+        self.callback_state = "skipped"
+
+    def callback_sent(self):
+        """Record a successful callback delivery."""
+
+        self.callback_state = "sent"
+        self.callback_last_error = None
+
+    def callback_failed(self, error: str, next_retry: datetime.datetime):
+        """Record a failed callback attempt to be retried after ``next_retry``."""
+
+        self.callback_state = "failed"
+        self.callback_last_error = error
+        self.callback_next_retry = next_retry
+
+    def callback_exhausted(self, error: str):
+        """Record a callback attempt that exhausted the retry budget."""
+
+        self.callback_state = "exhausted"
+        self.callback_last_error = error

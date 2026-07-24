@@ -87,6 +87,10 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
                     return True
                 try:
                     item.archive_path = storage_task._archive.archive_root
+                    if item.manifest.librarian_name == get_settings().cli_librarian_name:
+                        item.skip_callback()
+                    else:
+                        item.callback_pending()
                     item.complete(session)
                     loguru.logger.info(f"Archive {storage_task._archive.manifest_id} completed successfully.")
                 except Exception:
