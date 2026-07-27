@@ -1,14 +1,5 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
-
-"""
-Tests for the bits of the database layer that are ours rather than
-SQLAlchemy's: lazy engine construction and the queue's dequeue semantics.
-
-Persisting an item and marking it complete/failed are covered end-to-end by
-test_tasks.py, so they aren't re-tested here.
-"""
-
 import time
 
 from archivist.orm.archivequeue import ArchiveQueue

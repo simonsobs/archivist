@@ -1,8 +1,5 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
-
-"""Tests for archivist.settings.Settings and get_settings()."""
-
 import json
 
 import pytest

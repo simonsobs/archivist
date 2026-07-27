@@ -1,7 +1,5 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
-"""Shared pytest fixtures for the archivist test suite."""
-
 from datetime import datetime, timezone
 
 import pytest

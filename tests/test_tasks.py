@@ -1,11 +1,5 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
-
-"""
-Integration tests for the background pipeline: the in-memory status queue
-plus `start_archive` / `process_status_queue`.
-"""
-
 import queue as stdlib_queue
 import time
 from unittest import mock

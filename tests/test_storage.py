@@ -1,8 +1,5 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
-
-"""Tests for the storage backends (base interface, posix disk, hpss stub)."""
-
 import pytest
 from conftest import make_manifest_entry
 
