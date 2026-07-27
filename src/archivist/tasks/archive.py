@@ -45,7 +45,7 @@ def start_archive(
         loguru.logger.info(f"Archive Item: {manifest}, {type(archive_item)}")
         archive = ArchiveJob(
             manifest=manifest,
-            manifest_id=archive_item.manifest_id,
+            manifest_id=archive_item.id,
             local_root=settings.local_root,
             archive_root=archive_item.archive_root,
             type=settings.archive_type,
@@ -76,13 +76,11 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
     try:
         loguru.logger.debug(f"Processing status queue for storage task: {storage_task._archive}")
         if storage_task.future.done():
-            loguru.logger.debug(f"Storage task for archive {storage_task._archive.manifest_id} future completed.")
+            loguru.logger.debug(f"Storage task for archive {storage_task._archive.id} future completed.")
             session = session_maker()
             try:
-                item = session.query(Archive).filter_by(manifest_id=storage_task._archive.manifest_id).first()
-                loguru.logger.debug(
-                    f"Retrieved Archive item for manifest_id {storage_task._archive.manifest_id}: {item}"
-                )
+                item = session.query(Archive).filter_by(id=storage_task._archive.id).first()
+                loguru.logger.debug(f"Retrieved Archive item for manifest_id {storage_task._archive.id}: {item}")
                 if item is None:
                     return True
                 try:
@@ -92,16 +90,14 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
                     else:
                         item.callback_pending()
                     item.complete(session)
-                    loguru.logger.info(f"Archive {storage_task._archive.manifest_id} completed successfully.")
+                    loguru.logger.info(f"Archive {storage_task._archive.id} completed successfully.")
                 except Exception:
-                    loguru.logger.exception(f"Archive {storage_task._archive.manifest_id} failed to store.")
+                    loguru.logger.exception(f"Archive {storage_task._archive.id} failed to store.")
                     item.fail(session)
             finally:
                 session.close()
         else:
-            loguru.logger.debug(
-                f"Storage task for archive {storage_task._archive.manifest_id} future not completed yet."
-            )
+            loguru.logger.debug(f"Storage task for archive {storage_task._archive.id} future not completed yet.")
             status_queue.enqueue(storage_task)
 
         status_queue.task_done()
@@ -138,7 +134,7 @@ def reconcile_orphaned_archives(
                 }
                 archive = ArchiveJob(
                     manifest=manifest,
-                    manifest_id=item.manifest_id,
+                    manifest_id=item.id,
                     local_root=settings.local_root,
                     archive_root=item.archive_root,
                     type=settings.archive_type,
@@ -147,13 +143,13 @@ def reconcile_orphaned_archives(
                 if storage.verify(archive):
                     item.archive_path = archive.archive_root
                     item.complete(session)
-                    loguru.logger.info(f"Reconciled orphan {item.manifest_id}: already complete.")
+                    loguru.logger.info(f"Reconciled orphan {item.id}: already complete.")
                 elif item.retries >= settings.max_archive_retries:
-                    loguru.logger.error(f"Orphan {item.manifest_id} exceeded max_archive_retries; failing.")
+                    loguru.logger.error(f"Orphan {item.id} exceeded max_archive_retries; failing.")
                     item.fail(session)
                 else:
                     item.requeue(session)
-                    loguru.logger.info(f"Requeued orphan {item.manifest_id} (retry {item.retries}).")
+                    loguru.logger.info(f"Requeued orphan {item.id} (retry {item.retries}).")
             except Exception:
                 loguru.logger.exception(f"Failed to reconcile orphan {getattr(item, 'manifest_id', '?')}; skipping.")
     finally:

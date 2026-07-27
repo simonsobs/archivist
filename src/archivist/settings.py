@@ -7,6 +7,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
 
+class LibrarianCallbackConfig(BaseModel):
+    # Base URL of the Librarian; the callback path is appended to this.
+    url: str
+    auth_token: str | None = None
+    auth_token_file: Path | None = None
+
+
 class Settings(BaseSettings):
     """
     Settings for the archivist . Note that because this is a BaseSettings
@@ -81,6 +88,22 @@ class Settings(BaseSettings):
     # Number of background threads used to perform filesystem storage copies.
     storage_threads: int = 4
 
+    # Reserved librarian name used by the CLI archive path. Jobs submitted
+    # under this name never trigger a Librarian callback.
+    cli_librarian_name: str = "__cli__"
+
+    # Per-Librarian callback destinations, keyed by librarian_name. A completed
+    # archive whose librarian_name is a key here is reported back. A name that
+    # is neither the CLI name nor a key here is treated as a misconfiguration
+    # (attempted, warned, and retried like a delivery failure).
+    librarians: dict[str, LibrarianCallbackConfig] = {}
+
+    # Callback retry policy (dedicated loop).
+    callback_max_attempts: int = 5
+    callback_retry_base_seconds: float = 30.0  # exponential backoff base
+    callback_poll_interval_seconds: float = 5.0
+    callback_timeout_seconds: float = 30.0
+
     def model_post_init(__context, *args, **kwargs):
         """
         Read sensitive data from their appropriate files.
@@ -93,6 +116,13 @@ class Settings(BaseSettings):
         if __context.database_password_file is not None:
             with open(__context.database_password_file, "r") as handle:
                 __context.database_password = handle.read().strip()
+
+        for name, cfg in __context.librarians.items():
+            if cfg.auth_token_file is not None:
+                with open(cfg.auth_token_file, "r") as handle:
+                    cfg.auth_token = handle.read().strip()
+            if name == __context.cli_librarian_name:
+                raise ValueError(f"Configured librarian '{name}' collides with cli_librarian_name.")
 
     @property
     def sqlalchemy_database_uri(self) -> URL:

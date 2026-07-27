@@ -185,7 +185,7 @@ class TestArchiveIdempotency(TestApiBase):
         self.assertEqual(len(manifest.entries), 1)
         self.assertEqual(manifest.entries[0].checksum, "a" * 64)
         # ...nor enqueue a second archive job.
-        self.assertEqual(self.session.query(Archive).filter_by(manifest_id="m-immutable").count(), 1)
+        self.assertEqual(self.session.query(Archive).filter_by(id="m-immutable").count(), 1)
 
     def test_distinct_ids_create_distinct_manifests(self):
         files = [make_manifest_entry_json(name="a.txt", checksum="a" * 64)]

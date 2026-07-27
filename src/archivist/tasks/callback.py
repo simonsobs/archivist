@@ -64,24 +64,24 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
                 raise RuntimeError(f"no endpoint configured for librarian '{librarian_name}'")
             send_archive_callback(
                 config,
-                manifest_id=item.manifest_id,
+                manifest_id=item.id,
                 timeout=settings.callback_timeout_seconds,
             )
             item.callback_sent()
-            loguru.logger.info(f"Reported archive {item.manifest_id} to '{librarian_name}'.")
+            loguru.logger.info(f"Reported archive {item.id} to '{librarian_name}'.")
         except Exception as exc:
             error = str(exc)[:1024]
             if item.callback_attempts >= settings.callback_max_attempts:
                 item.callback_exhausted(error)
                 loguru.logger.warning(
-                    f"Callback for {item.manifest_id} -> '{librarian_name}' exhausted "
+                    f"Callback for {item.id} -> '{librarian_name}' exhausted "
                     f"after {item.callback_attempts} attempts: {exc}"
                 )
             else:
                 backoff = settings.callback_retry_base_seconds * 2 ** (item.callback_attempts - 1)
                 item.callback_failed(error, now + datetime.timedelta(seconds=backoff))
                 loguru.logger.warning(
-                    f"Callback for {item.manifest_id} -> '{librarian_name}' failed "
+                    f"Callback for {item.id} -> '{librarian_name}' failed "
                     f"(attempt {item.callback_attempts}), retrying in {backoff:.0f}s: {exc}"
                 )
         session.commit()

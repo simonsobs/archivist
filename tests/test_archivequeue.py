@@ -3,6 +3,7 @@
 
 """Tests for archivist.orm.archive.Archive, against a real sqlite DB."""
 
+import datetime
 import unittest
 
 import pytest
@@ -34,27 +35,33 @@ class TestNewItem(TestArchiveQueueBase):
     def test_new_item_persists(self):
         make_archive_item(self.session, manifest_id="m1", archive_root="/root")
 
-        fetched = self.session.query(Archive).filter_by(manifest_id="m1").one()
+        fetched = self.session.query(Archive).filter_by(id="m1").one()
         self.assertEqual(fetched.archive_root, "/root")
 
     def test_callback_columns_default_on_insert(self):
         make_archive_item(self.session, manifest_id="m1", archive_root="/root")
 
-        fetched = self.session.query(Archive).filter_by(manifest_id="m1").one()
+        fetched = self.session.query(Archive).filter_by(id="m1").one()
         self.assertEqual(fetched.callback_state, "pending")
         self.assertEqual(fetched.callback_attempts, 0)
         self.assertIsNone(fetched.callback_last_attempt)
         self.assertIsNone(fetched.callback_next_retry)
         self.assertIsNone(fetched.callback_last_error)
 
-    def test_manifest_id_must_be_unique(self):
+    def test_id_must_be_unique(self):
         from sqlalchemy.exc import IntegrityError
 
         make_archive_item(self.session, manifest_id="dup", archive_root="/root")
 
-        # A second archive job on the same manifest violates the unique FK (1:1).
-        manifest = Manifest.get_or_create(self.session, manifest_id="dup", librarian_name="lib")
-        self.session.add(Archive.new_item(manifest=manifest, archive_root="/root"))
+        # The archive id is the manifest id, so a second archive job on the
+        # same manifest collides on the primary key (1:1).
+        self.session.add(
+            Archive(
+                id="dup",
+                archive_root="/root",
+                created_time=datetime.datetime.now(datetime.timezone.utc),
+            )
+        )
         with self.assertRaises(IntegrityError):
             self.session.commit()
 
@@ -68,7 +75,7 @@ class TestDequeue(TestArchiveQueueBase):
 
         dequeued = Archive.dequeue(self.session)
 
-        self.assertEqual(dequeued.manifest_id, "m1")
+        self.assertEqual(dequeued.id, "m1")
         self.assertTrue(dequeued.consumed)
         self.assertIsNotNone(dequeued.consumed_time)
 
@@ -81,7 +88,7 @@ class TestDequeue(TestArchiveQueueBase):
 
         dequeued = Archive.dequeue(self.session)
 
-        self.assertEqual(dequeued.manifest_id, "first")
+        self.assertEqual(dequeued.id, "first")
 
     def test_dequeue_skips_already_consumed_items(self):
         make_archive_item(self.session, manifest_id="m1")
@@ -133,7 +140,7 @@ class TestRequeue(TestArchiveQueueBase):
 
         again = Archive.dequeue(self.session)
         self.assertIsNotNone(again)
-        self.assertEqual(again.manifest_id, "m1")
+        self.assertEqual(again.id, "m1")
 
 
 if __name__ == "__main__":

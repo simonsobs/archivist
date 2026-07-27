@@ -220,7 +220,7 @@ class TestResendCallbackCommand:
         assert "reset to pending" in result.output
 
         db_session.expire_all()
-        item = db_session.query(Archive).filter_by(manifest_id="m1").one()
+        item = db_session.query(Archive).filter_by(id="m1").one()
         assert item.callback_state == "pending"
         assert item.callback_attempts == 0
         assert item.callback_next_retry is not None
@@ -243,7 +243,7 @@ class TestResendCallbackCommand:
         assert "No completed archive for manifest m1" in result.output
 
         db_session.expire_all()
-        item = db_session.query(Archive).filter_by(manifest_id="m1").one()
+        item = db_session.query(Archive).filter_by(id="m1").one()
         assert item.callback_next_retry is None
 
     def test_manifest_id_is_required(self, runner, cli_config_path):

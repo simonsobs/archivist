@@ -54,7 +54,6 @@ class TestProcessCallbacksBase(unittest.TestCase):
         item.failed = failed
         item.completed_time = completed_time or datetime.datetime.now(datetime.timezone.utc)
         item.archive_path = str(self.archive_root)
-        item.librarian_archive_id = item.id
         item.callback_state = callback_state
         item.callback_attempts = callback_attempts
         item.callback_next_retry = callback_next_retry
@@ -63,7 +62,7 @@ class TestProcessCallbacksBase(unittest.TestCase):
 
     def _reload(self, manifest_id="m1") -> Archive:
         self.session.expire_all()
-        return self.session.query(Archive).filter_by(manifest_id=manifest_id).one()
+        return self.session.query(Archive).filter_by(id=manifest_id).one()
 
 
 class TestNothingDue(TestProcessCallbacksBase):

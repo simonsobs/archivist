@@ -8,10 +8,9 @@ worker thread picks items up and performs the actual archive operation.
 """
 
 import datetime
-import uuid
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload
 
 from .. import database as db
 from .manifest import Manifest
@@ -24,20 +23,15 @@ class Archive(db.Base):
 
     __tablename__ = "archive"
 
-    id = db.Column(db.String(36), primary_key=True)  # archivist-minted uuid4
-    "Archivist-minted uuid4 identifying this archive job."
+    id = db.Column(
+        db.String(36), db.ForeignKey("manifest.id", ondelete="CASCADE"), primary_key=True
+    )  # The same as the manifest ID, since there is a 1:1 relationship.
+    "Archive ID identifying this archive job."
     created_time = db.Column(db.DateTime, nullable=False)
     "The time this job was added to the queue."
     retries = db.Column(db.Integer, nullable=False, default=0)
     "The number of times this job has been attempted."
 
-    manifest_id = db.Column(
-        db.String(36),
-        db.ForeignKey("manifest.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,  # 1:1
-    )
-    "FK to the manifest being archived (unique -> 1:1)."
     manifest = db.relationship("Manifest", back_populates="archive")
     "The manifest being archived."
 
@@ -45,9 +39,6 @@ class Archive(db.Base):
     "The archive root at submit time; snapshotted since settings can change."
     archive_path = db.Column(db.String(2048), nullable=True)
     "The destination path, set on completion."
-
-    librarian_archive_id = db.Column(db.String(2048), nullable=True, unique=True)
-    "Site-specific identifier supplied by the Librarian callback contract."
 
     consumed = db.Column(db.Boolean, default=False)
     "Whether a worker has picked this job up."
@@ -73,7 +64,7 @@ class Archive(db.Base):
     @classmethod
     def new_item(cls, manifest: "Manifest", archive_root: str) -> "Archive":
         return cls(
-            id=str(uuid.uuid4()),
+            id=manifest.id,
             manifest=manifest,
             archive_root=archive_root,
             created_time=datetime.datetime.now(datetime.timezone.utc),

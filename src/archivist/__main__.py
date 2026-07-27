@@ -144,7 +144,7 @@ def resend_callback(ctx, manifest_id):
 
     session = get_session()
     try:
-        item = session.query(Archive).filter_by(manifest_id=manifest_id).first()
+        item = session.query(Archive).filter_by(id=manifest_id).first()
         if item is None or not item.completed:
             click.secho("[ERROR]", fg="red", nl=False, err=True)
             click.echo(f" No completed archive for manifest {manifest_id}", err=True)
