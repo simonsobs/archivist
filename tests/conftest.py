@@ -23,6 +23,8 @@ def _reset_module_singletons():
     """
 
     def _reset():
+        if database._engine is not None:
+            database._engine.dispose()
         database._engine = None
         database._SessionMaker = None
         settings_module._settings = None
@@ -52,10 +54,9 @@ def local_root(tmp_path):
 def settings(tmp_path, archive_root, local_root) -> Settings:
     """A Settings instance backed by a throwaway on-disk sqlite database."""
 
-    db_path = tmp_path / "archivist_test.db"
     return Settings(
         database_driver="sqlite",
-        database=str(db_path),
+        database=str(tmp_path / "archivist_test.db"),
         archive_type="posix",
         archive_root=str(archive_root),
         local_root=str(local_root),
@@ -63,7 +64,16 @@ def settings(tmp_path, archive_root, local_root) -> Settings:
 
 
 @pytest.fixture
-def use_settings(monkeypatch, settings, tmp_path):
+def config_path(settings, tmp_path):
+    """`settings` serialised to a JSON file, as the CLI/server would be given."""
+
+    path = tmp_path / "test_config.json"
+    path.write_text(settings.model_dump_json())
+    return path
+
+
+@pytest.fixture
+def use_settings(monkeypatch, settings, config_path):
     """
     Make `get_settings()` return `settings`, regardless of whether the
     caller does `import archivist.settings` or
@@ -72,9 +82,6 @@ def use_settings(monkeypatch, settings, tmp_path):
     We instead drive this through the same env-var + cache mechanism
     `get_settings()` itself uses.
     """
-
-    config_path = tmp_path / "test_config.json"
-    config_path.write_text(settings.model_dump_json())
 
     monkeypatch.setenv("ARCHIVIST_CONFIG_PATH", str(config_path))
     monkeypatch.setattr(settings_module, "_settings", None)
@@ -97,41 +104,28 @@ def db_session(use_settings):
 def make_manifest_entry(**overrides):
     """Build a dict-form manifest entry, suitable for `ManifestEntry(**entry)`."""
 
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    entry = dict(
-        name="file.txt",
-        create_time=now,
-        size=1024,
-        checksum="0" * 64,
-        uploader="test-uploader",
-        source="/source",
-        instance_path="/source/file.txt",
-        instance_create_time=now,
-        instance_available=True,
-        outgoing_transfer_id=0,
-    )
+    entry = {
+        "name": "file.txt",
+        "create_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "size": 1024,
+        "checksum": "0" * 64,
+        "uploader": "test-uploader",
+        "source": "/source",
+        "instance_path": "/source/file.txt",
+        "instance_create_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "instance_available": True,
+        "outgoing_transfer_id": 0,
+    }
     entry.update(overrides)
     return entry
 
 
-def make_manifest_entry_json(**overrides):
-    """Like `make_manifest_entry`, but with datetimes as ISO strings for use as raw HTTP JSON bodies."""
+def make_manifest_request(json_safe=False, **overrides):
+    """A one-entry manifest request body. Set `json_safe=True` for a raw HTTP JSON body."""
 
     entry = make_manifest_entry(**overrides)
-    for key in ("create_time", "instance_create_time"):
-        if isinstance(entry[key], datetime):
+    if json_safe:
+        for key in ("create_time", "instance_create_time"):
             entry[key] = entry[key].isoformat()
-    return entry
 
-
-@pytest.fixture
-def manifest_entry_data():
-    return make_manifest_entry()
-
-
-@pytest.fixture
-def manifest_request_data(manifest_entry_data):
-    return {
-        "librarian_name": "test-librarian",
-        "store_files": [manifest_entry_data],
-    }
+    return {"librarian_name": "test-librarian", "store_files": [entry]}
