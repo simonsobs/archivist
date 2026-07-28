@@ -41,7 +41,6 @@ dev = [
     "coverage>=7.10.7",
     "coveralls>=4.0.1",
     "httpx>=0.28.1",
-    "hypothesis>=6.141.1",
     "ipython>=9.15.0",
     "isort>=6.1.0",
     "pre-commit>=4.3.0",

@@ -51,7 +51,7 @@ class Archive(db.Base):
     failed = db.Column(db.Boolean, default=False)
     "Whether the job failed, and that is why it is completed."
     callback_state = db.Column(db.String(16), nullable=False, default="pending")
-    "pending | sent | failed | exhausted | skipped"
+    "pending | sent | errored | failed | skipped"
     callback_attempts = db.Column(db.Integer, nullable=False, default=0)
     "Number of callback POST attempts made so far."
     callback_last_attempt = db.Column(db.DateTime, nullable=True)
@@ -157,15 +157,15 @@ class Archive(db.Base):
         self.callback_state = "sent"
         self.callback_last_error = None
 
-    def callback_failed(self, error: str, next_retry: datetime.datetime):
+    def callback_error(self, error: str, next_retry: datetime.datetime):
         """Record a failed callback attempt to be retried after ``next_retry``."""
 
-        self.callback_state = "failed"
+        self.callback_state = "errored"
         self.callback_last_error = error
         self.callback_next_retry = next_retry
 
-    def callback_exhausted(self, error: str):
+    def callback_failed(self, error: str):
         """Record a callback attempt that exhausted the retry budget."""
 
-        self.callback_state = "exhausted"
+        self.callback_state = "failed"
         self.callback_last_error = error

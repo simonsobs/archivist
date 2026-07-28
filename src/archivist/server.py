@@ -59,7 +59,7 @@ def _callback_worker_loop():
 
 
 @asynccontextmanager
-async def slack_post_at_startup_shutdown(app: FastAPI):
+async def startup_shutdown_server(app: FastAPI):
     """
     Lifespan event that posts to the slack hook once
     the FastAPI server starts up and shuts down.
@@ -95,7 +95,7 @@ def main() -> FastAPI:
         title=server_settings.displayed_site_name,
         description=server_settings.displayed_site_description,
         openapi_url="/api/v2/openapi.json" if server_settings.debug else None,
-        lifespan=slack_post_at_startup_shutdown,
+        lifespan=startup_shutdown_server,
     )
 
     logger.debug("Adding API router.")

@@ -76,11 +76,13 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
     try:
         loguru.logger.debug(f"Processing status queue for storage task: {storage_task._archive}")
         if storage_task.future.done():
-            loguru.logger.debug(f"Storage task for archive {storage_task._archive.id} future completed.")
+            loguru.logger.debug(f"Storage task for archive {storage_task._archive.manifest_id} future completed.")
             session = session_maker()
             try:
-                item = session.query(Archive).filter_by(id=storage_task._archive.id).first()
-                loguru.logger.debug(f"Retrieved Archive item for manifest_id {storage_task._archive.id}: {item}")
+                item = session.query(Archive).filter_by(id=storage_task._archive.manifest_id).first()
+                loguru.logger.debug(
+                    f"Retrieved Archive item for manifest_id {storage_task._archive.manifest_id}: {item}"
+                )
                 if item is None:
                     return True
                 try:
@@ -90,14 +92,16 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
                     else:
                         item.callback_pending()
                     item.complete(session)
-                    loguru.logger.info(f"Archive {storage_task._archive.id} completed successfully.")
+                    loguru.logger.info(f"Archive {storage_task._archive.manifest_id} completed successfully.")
                 except Exception:
-                    loguru.logger.exception(f"Archive {storage_task._archive.id} failed to store.")
+                    loguru.logger.exception(f"Archive {storage_task._archive.manifest_id} failed to store.")
                     item.fail(session)
             finally:
                 session.close()
         else:
-            loguru.logger.debug(f"Storage task for archive {storage_task._archive.id} future not completed yet.")
+            loguru.logger.debug(
+                f"Storage task for archive {storage_task._archive.manifest_id} future not completed yet."
+            )
             status_queue.enqueue(storage_task)
 
         status_queue.task_done()

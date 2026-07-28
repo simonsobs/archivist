@@ -1,16 +1,17 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
-"""Shared pytest fixtures for the archivist test suite."""
-
 from datetime import datetime, timezone
+from unittest import mock
 
 import pytest
 
 import archivist.database as database
 import archivist.queue as queue_module
 import archivist.settings as settings_module
-from archivist.settings import Settings
+from archivist.settings import LibrarianCallbackConfig, Settings
 from archivist.storage.storage_disk import StorageDisk
+
+LIBRARIAN_URL = "https://librarian.example.org"
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +24,8 @@ def _reset_module_singletons():
     """
 
     def _reset():
+        if database._engine is not None:
+            database._engine.dispose()
         database._engine = None
         database._SessionMaker = None
         settings_module._settings = None
@@ -50,20 +53,36 @@ def local_root(tmp_path):
 
 @pytest.fixture
 def settings(tmp_path, archive_root, local_root) -> Settings:
-    """A Settings instance backed by a throwaway on-disk sqlite database."""
+    """A Settings instance backed by a throwaway on-disk sqlite database.
 
-    db_path = tmp_path / "archivist_test.db"
+    Callback settings belong here rather than being assigned onto the object
+    later: `get_settings()` re-reads the config file on every call and builds
+    a fresh Settings, so a mutated instance is invisible to anything that
+    calls it again.
+    """
+
     return Settings(
         database_driver="sqlite",
-        database=str(db_path),
+        database=str(tmp_path / "archivist_test.db"),
         archive_type="posix",
         archive_root=str(archive_root),
         local_root=str(local_root),
+        librarians={"test-librarian": LibrarianCallbackConfig(url=LIBRARIAN_URL)},
+        callback_poll_interval_seconds=0.01,  # keep the callback worker's idle wait out of test runtime
     )
 
 
 @pytest.fixture
-def use_settings(monkeypatch, settings, tmp_path):
+def config_path(settings, tmp_path):
+    """`settings` serialised to a JSON file, as the CLI/server would be given."""
+
+    path = tmp_path / "test_config.json"
+    path.write_text(settings.model_dump_json())
+    return path
+
+
+@pytest.fixture
+def use_settings(monkeypatch, settings, config_path):
     """
     Make `get_settings()` return `settings`, regardless of whether the
     caller does `import archivist.settings` or
@@ -72,9 +91,6 @@ def use_settings(monkeypatch, settings, tmp_path):
     We instead drive this through the same env-var + cache mechanism
     `get_settings()` itself uses.
     """
-
-    config_path = tmp_path / "test_config.json"
-    config_path.write_text(settings.model_dump_json())
 
     monkeypatch.setenv("ARCHIVIST_CONFIG_PATH", str(config_path))
     monkeypatch.setattr(settings_module, "_settings", None)
@@ -97,27 +113,25 @@ def db_session(use_settings):
 def make_manifest_entry(**overrides):
     """Build a dict-form manifest entry, suitable for `ManifestEntry(**entry)`."""
 
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    entry = dict(
-        name="file.txt",
-        create_time=now,
-        size=1024,
-        checksum="0" * 64,
-        uploader="test-uploader",
-        source="/source",
-        instance_path="/source/file.txt",
-        instance_create_time=now,
-        instance_available=True,
-        outgoing_transfer_id=0,
-    )
+    entry = {
+        "name": "file.txt",
+        "create_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "size": 1024,
+        "checksum": "0" * 64,
+        "uploader": "test-uploader",
+        "source": "/source",
+        "instance_path": "/source/file.txt",
+        "instance_create_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "instance_available": True,
+        "outgoing_transfer_id": 0,
+    }
     entry.update(overrides)
     return entry
 
 
 def make_archive_item(
     session,
-    manifest_id="m1",
-    *,
+    id="m1",
     librarian_name="test-librarian",
     archive_root="/root",
     entries=None,
@@ -136,7 +150,7 @@ def make_archive_item(
 
     manifest = Manifest.get_or_create(
         session,
-        manifest_id=manifest_id,
+        manifest_id=id,
         librarian_name=librarian_name,
     )
     manifest.entries = [ManifestEntry(**entry) for entry in entries]
@@ -149,25 +163,70 @@ def make_archive_item(
     return item
 
 
-def make_manifest_entry_json(**overrides):
-    """Like `make_manifest_entry`, but with datetimes as ISO strings for use as raw HTTP JSON bodies."""
+def make_manifest_request(id="m1", json_safe=False, **overrides):
+    """A one-entry manifest request body. Set `json_safe=True` for a raw HTTP JSON body.
+
+    `id` is Librarian-minted and doubles as the idempotency key, so
+    callers that resubmit (or want distinct manifests) set it explicitly.
+    """
 
     entry = make_manifest_entry(**overrides)
-    for key in ("create_time", "instance_create_time"):
-        if isinstance(entry[key], datetime):
+    if json_safe:
+        for key in ("create_time", "instance_create_time"):
             entry[key] = entry[key].isoformat()
-    return entry
+
+    return {"manifest_id": id, "librarian_name": "test-librarian", "store_files": [entry]}
+
+
+def make_orphan(session, id, local_root, archive_root, retries=0):
+    """Persist an archive job left consumed-but-incomplete, as a crash mid-copy would."""
+
+    source = local_root / f"{id}.txt"
+    source.write_text("content")
+
+    item = make_archive_item(
+        session,
+        id=id,
+        archive_root=str(archive_root),
+        entries=[make_manifest_entry(instance_path=str(source), size=7)],
+    )
+    item.consumed = True
+    item.retries = retries
+    session.commit()
+    return item
+
+
+## -------- Callback fixtures -------------------------------------------------------------
 
 
 @pytest.fixture
-def manifest_entry_data():
-    return make_manifest_entry()
+def send():
+    """Patch out the outgoing POST and hand back the mock."""
+
+    with mock.patch("archivist.tasks.callback.send_archive_callback") as mock_send:
+        yield mock_send
 
 
-@pytest.fixture
-def manifest_request_data(manifest_entry_data):
-    return {
-        "manifest_id": "m1",
-        "librarian_name": "test-librarian",
-        "store_files": [manifest_entry_data],
-    }
+def make_awaiting_callback(
+    session,
+    archive_root,
+    id="m1",
+    librarian_name="test-librarian",
+    completed_time=None,
+    **overrides,
+):
+    """Persist a completed archive row that still owes its Librarian a report."""
+
+    item = make_archive_item(
+        session,
+        id=id,
+        librarian_name=librarian_name,
+        archive_root=str(archive_root),
+    )
+    item.completed = True
+    item.completed_time = completed_time or datetime(2026, 1, 1, tzinfo=timezone.utc)
+    item.callback_pending()
+    for field, value in overrides.items():
+        setattr(item, field, value)
+    session.commit()
+    return item

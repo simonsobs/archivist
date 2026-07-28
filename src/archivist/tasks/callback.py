@@ -27,9 +27,9 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
     Attempt the next due Librarian callback.
 
     Selects the oldest completed, non-failed archive whose callback is still
-    owed (`pending`/`failed`) and whose backoff has elapsed, then POSTs the
+    owed (`pending`/`errored`) and whose backoff has elapsed, then POSTs the
     report. On success the row is marked `sent`; on failure it is marked
-    `failed` with an exponential backoff, or `exhausted` once
+    `errored` with an exponential backoff, or `failed` once
     `callback_max_attempts` is reached. Returns ``True`` when an attempt was
     made and ``False`` when nothing was due, so the worker loop can back off
     instead of spinning.
@@ -43,7 +43,7 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
             .filter(
                 Archive.completed.is_(True),
                 Archive.failed.is_(False),
-                Archive.callback_state.in_(("pending", "failed")),
+                Archive.callback_state.in_(("pending", "errored")),
                 or_(
                     Archive.callback_next_retry.is_(None),
                     Archive.callback_next_retry <= now,
@@ -72,16 +72,16 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
         except Exception as exc:
             error = str(exc)[:1024]
             if item.callback_attempts >= settings.callback_max_attempts:
-                item.callback_exhausted(error)
+                item.callback_failed(error)
                 loguru.logger.warning(
-                    f"Callback for {item.id} -> '{librarian_name}' exhausted "
+                    f"Callback for {item.id} -> '{librarian_name}' failed "
                     f"after {item.callback_attempts} attempts: {exc}"
                 )
             else:
                 backoff = settings.callback_retry_base_seconds * 2 ** (item.callback_attempts - 1)
-                item.callback_failed(error, now + datetime.timedelta(seconds=backoff))
+                item.callback_error(error, now + datetime.timedelta(seconds=backoff))
                 loguru.logger.warning(
-                    f"Callback for {item.id} -> '{librarian_name}' failed "
+                    f"Callback for {item.id} -> '{librarian_name}' errored "
                     f"(attempt {item.callback_attempts}), retrying in {backoff:.0f}s: {exc}"
                 )
         session.commit()
