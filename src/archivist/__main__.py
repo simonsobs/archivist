@@ -69,13 +69,13 @@ def archive(ctx, source_path, librarian_name, manifest_id):
         walk_root = source_root
 
     uploader = librarian_name
-    store_files = []
+    archive_files = []
 
     for file_path in files:
         stat = file_path.stat()
         relative_path = file_path.relative_to(settings.local_root)
         loguru.logger.info(f"Archiving file: {file_path}, relative path: {relative_path}")
-        store_files.append(
+        archive_files.append(
             ManifestEntry(
                 name=str(relative_path),
                 create_time=datetime.fromtimestamp(stat.st_ctime),
@@ -92,7 +92,12 @@ def archive(ctx, source_path, librarian_name, manifest_id):
     if not manifest_id:
         manifest_id = str(datetime.now().timestamp()).replace(".", "")
 
-    manifest_request = ManifestRequest(manifest_id=manifest_id, librarian_name=librarian_name, store_files=store_files)
+    manifest_request = ManifestRequest(
+        manifest_id=manifest_id,
+        librarian_name=librarian_name,
+        archive_name=settings.name,
+        archive_files=archive_files,
+    )
     try:
         req = requests.post(
             f"http://{settings.host}:{settings.port}/api/v1/archive", json=manifest_request.model_dump(mode="json")
@@ -128,7 +133,7 @@ def extract(ctx, archive, dest_path):
 
 
 @main.command()
-@click.option("--manifest-id", type=str, required=True, help="The manifest whose callback should be reset to pending")
+@click.option("--manifest-id", type=str, required=False, help="The manifest whose callback should be reset to pending")
 @click.pass_context
 def resend_callback(ctx, manifest_id):
     """Reset the Librarian callback to pending for a manifest whose callback failed or was exhausted.
@@ -144,17 +149,22 @@ def resend_callback(ctx, manifest_id):
 
     session = get_session()
     try:
-        item = session.query(Archive).filter_by(id=manifest_id).first()
-        if item is None or not item.completed:
-            click.secho("[ERROR]", fg="red", nl=False, err=True)
-            click.echo(f" No completed archive for manifest {manifest_id}", err=True)
-            return
-        item.callback_pending()
-        session.commit()
+        click.echo(f"Resending callback for manifest {manifest_id}...")
+        if manifest_id is not None:
+            items = session.query(Archive).filter_by(id=manifest_id).all()
+        else:
+            items = session.query(Archive).filter_by(callback_state="failed").all()
+        click.echo(f"Resetting {len(items)} callback(s) to pending.")
+        for item in items:
+            if not item.completed:
+                click.secho("[ERROR]", fg="red", nl=False, err=True)
+                click.echo(f" No completed archive for manifest {manifest_id}", err=True)
+                return
+            item.callback_pending()
+            click.echo(f"Callback for {item.id} reset to pending.")
+            session.commit()
     finally:
         session.close()
-
-    click.echo(f"Callback for {manifest_id} reset to pending.")
 
 
 @main.command()

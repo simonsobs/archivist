@@ -72,9 +72,9 @@ def test_archive_builds_a_manifest_from_the_source_path(config_path, post, setti
     # No --librarian-name given, so the job runs under the reserved CLI
     # sentinel and will never trigger a Librarian callback.
     assert body["librarian_name"] == settings.cli_librarian_name
-    assert sorted(entry["name"] for entry in body["store_files"]) == expected_names
+    assert sorted(entry["name"] for entry in body["archive_files"]) == expected_names
 
-    entry = next(entry for entry in body["store_files"] if entry["name"] == "adir/a.txt")
+    entry = next(entry for entry in body["archive_files"] if entry["name"] == "adir/a.txt")
     assert entry["checksum"] == hashlib.sha256(b"a").hexdigest()
 
 
@@ -92,7 +92,7 @@ def test_archive_under_a_named_librarian_is_attributed_to_it(config_path, post, 
     assert result.exit_code == 0
     body = post.call_args.kwargs["json"]
     assert body["librarian_name"] == "custom-librarian"
-    assert body["store_files"][0]["uploader"] == "custom-librarian"
+    assert body["archive_files"][0]["uploader"] == "custom-librarian"
 
 
 def test_resend_callback_resets_an_exhausted_callback_to_pending(config_path, db_session, archive_root):

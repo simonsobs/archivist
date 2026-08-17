@@ -39,11 +39,17 @@ class ManifestRequest(BaseModel):
     librarian_name: str
     "The name of the librarian that generated this manifest."
 
-    store_files: list[ManifestEntry]
-    "The files on the store."
+    archive_name: str
+    "The name of the archive."
+
+    archive_files: list[ManifestEntry]
+    "The files on the archive."
 
 
 class ManifestResponse(BaseModel):
+    archive_id: str
+    "The ID of the archive."
+
     manifest_id: str
     "The ID of the manifest."
 

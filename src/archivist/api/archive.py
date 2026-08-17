@@ -25,7 +25,7 @@ def archive(
     # For now, we will just return a dummy response
 
     manifest_id = manifest_request.manifest_id
-    total_size = sum(entry.size for entry in manifest_request.store_files)
+    total_size = sum(entry.size for entry in manifest_request.archive_files)
     if total_size > settings.maximal_size_bytes:  # Example size limit of 1GB
         response.status_code = 400
         logger.error(
@@ -38,12 +38,13 @@ def archive(
     # asynchronously over HTTP and returns immediately, so a lost response
     # will make the Librarian retry; a resend must be safe. Fingerprint the
     # incoming payload as the sorted (name, checksum) of its files.
-    incoming_files = sorted((entry.name, entry.checksum) for entry in manifest_request.store_files)
+    incoming_files = sorted((entry.name, entry.checksum) for entry in manifest_request.archive_files)
 
     manifest = Manifest.get_or_create(
         session,
         manifest_id=manifest_id,
         librarian_name=manifest_request.librarian_name,
+        archive_name=manifest_request.archive_name,
     )
 
     if manifest.entries:
@@ -52,7 +53,7 @@ def archive(
             # Same id, same content: the retry case. Noop; report the id and
             # leave the already-queued archive untouched.
             logger.info(f"Manifest {manifest_id} already received; returning existing archive job.")
-            return ManifestResponse(manifest_id=str(manifest_id))
+            return ManifestResponse(manifest_id=str(manifest_id), archive_id=str(manifest.archive.id))
         # Same id, different content: immutability violated. Reject loudly
         # rather than silently mutating the manifest or dropping the change.
         response.status_code = 409
@@ -79,19 +80,17 @@ def archive(
             instance_available=entry.instance_available,
             outgoing_transfer_id=entry.outgoing_transfer_id,
         )
-        for entry in manifest_request.store_files
+        for entry in manifest_request.archive_files
     ]
     manifest.total_size_bytes = total_size
-    manifest.file_count = len(manifest_request.store_files)
+    manifest.file_count = len(manifest_request.archive_files)
 
     logger.info(
-        f"Archiving manifest {manifest_id} from librarian '{manifest_request.librarian_name}': {len(manifest_request.store_files)} file(s), {total_size} bytes total"
+        f"Archiving manifest {manifest_id} from librarian '{manifest_request.librarian_name}': {len(manifest_request.archive_files)} file(s), {total_size} bytes total"
     )
 
     item = Archive.new_item(manifest=manifest, archive_root=settings.archive_root)
     session.add(item)
     session.commit()
 
-    return ManifestResponse(
-        manifest_id=str(manifest_id),
-    )
+    return ManifestResponse(manifest_id=str(manifest_id), archive_id=str(item.id))

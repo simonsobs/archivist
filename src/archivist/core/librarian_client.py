@@ -17,10 +17,17 @@ CALLBACK_PATH = "api/v2/archive/callback"
 def send_archive_callback(
     config: LibrarianCallbackConfig,
     manifest_id: str,
+    archive_name: str,
+    archive_id: str,
+    archive_path: str,
     timeout: float = 30.0,
 ) -> None:
     """
     POST an archive completion report to a Librarian.
+
+    The body matches the Librarian's `ArchiveCallbackRequest`; every field is
+    required there, so an incomplete report is a 422 rather than a partial
+    update.
 
     Parameters
     ----------
@@ -28,6 +35,12 @@ def send_archive_callback(
         The destination Librarian's base URL and (optional) auth token.
     manifest_id : str
         The manifest that has been archived.
+    archive_name : str
+        The archive name the Librarian sent with the manifest.
+    archive_id : str
+        Archivist's ID for the archive (the same value as `manifest_id`).
+    archive_path : str
+        Where the archived data landed.
     timeout : float
         Per-request timeout, in seconds.
 
@@ -44,7 +57,9 @@ def send_archive_callback(
         url,
         json={
             "manifest_id": manifest_id,
-            "status": "success",
+            "archive_name": archive_name,
+            "archive_id": archive_id,
+            "archive_path": archive_path,
         },
         headers=headers,
         timeout=timeout,

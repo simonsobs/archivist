@@ -56,15 +56,27 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
             return False
 
         librarian_name = item.manifest.librarian_name
+        if librarian_name == settings.cli_librarian_name:
+            loguru.logger.info(f"Skipping callback for {item.id} to '{librarian_name}' (CLI librarian).")
+            item.skip_callback()
+            session.commit()
+            return True
         config = settings.librarians.get(librarian_name)
         item.callback_attempts += 1
         item.callback_last_attempt = now
         try:
             if config is None:
                 raise RuntimeError(f"no endpoint configured for librarian '{librarian_name}'")
+            if item.archive_path is None:
+                raise RuntimeError(f"archive {item.id} completed without an archive path")
             send_archive_callback(
                 config,
                 manifest_id=item.id,
+                archive_name=item.manifest.archive_name,
+                # Archivist's archive id is the manifest id; the Librarian
+                # checks the two agree before recording anything.
+                archive_id=item.id,
+                archive_path=item.archive_path,
                 timeout=settings.callback_timeout_seconds,
             )
             item.callback_sent()

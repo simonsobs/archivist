@@ -26,18 +26,21 @@ def test_manifest_request_accepts_many_or_no_entries():
     request = ManifestRequest(
         manifest_id="m1",
         librarian_name="lib",
-        store_files=[make_manifest_entry(), make_manifest_entry(name="other.txt")],
+        archive_name="arch",
+        archive_files=[make_manifest_entry(), make_manifest_entry(name="other.txt")],
     )
 
     assert request.librarian_name == "lib"
-    assert len(request.store_files) == 2
-    assert isinstance(request.store_files[0], ManifestEntry)
-    assert isinstance(request.store_files[1], ManifestEntry)
-    assert ManifestRequest(manifest_id="m1", librarian_name="lib", store_files=[]).store_files == []
+    assert request.archive_name == "arch"
+    assert len(request.archive_files) == 2
+    assert isinstance(request.archive_files[0], ManifestEntry)
+    assert isinstance(request.archive_files[1], ManifestEntry)
+    empty = ManifestRequest(manifest_id="m1", librarian_name="lib", archive_name="arch", archive_files=[])
+    assert empty.archive_files == []
 
-    # `manifest_id` and `librarian_name` are both required.
+    # `manifest_id`, `librarian_name` and `archive_name` are all required.
     with pytest.raises(ValidationError):
-        ManifestRequest(store_files=[])
+        ManifestRequest(archive_files=[])
 
 
 def test_archive_construction():

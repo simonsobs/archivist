@@ -175,7 +175,12 @@ def make_manifest_request(id="m1", json_safe=False, **overrides):
         for key in ("create_time", "instance_create_time"):
             entry[key] = entry[key].isoformat()
 
-    return {"manifest_id": id, "librarian_name": "test-librarian", "store_files": [entry]}
+    return {
+        "manifest_id": id,
+        "librarian_name": "test-librarian",
+        "archive_name": "test-archive",
+        "archive_files": [entry],
+    }
 
 
 def make_orphan(session, id, local_root, archive_root, retries=0):
@@ -225,6 +230,7 @@ def make_awaiting_callback(
     )
     item.completed = True
     item.completed_time = completed_time or datetime(2026, 1, 1, tzinfo=timezone.utc)
+    item.archive_path = str(archive_root)
     item.callback_pending()
     for field, value in overrides.items():
         setattr(item, field, value)
