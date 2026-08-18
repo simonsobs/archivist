@@ -1,0 +1,35 @@
+name: Lint archivist
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --python 3.11 --group dev
+
+      - name: Run lint
+        run: |
+          uv run ruff check
+
+      - name: Run lint
+        run: |
+          uv run ruff format --check --diff
+
+      - name: Run isort
+        run: |
+          uv run isort . --check --diff

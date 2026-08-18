@@ -7,17 +7,27 @@ name = "archivist"
 dynamic = ["version"]
 description = "Archival data storage for the Librarian"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = ["numpy"]
-
-[project.optional-dependencies]
-dev = [
-    "pytest"
+dependencies = [
+    "click",
+    "fastapi",
+    "numpy",
+    "pydantic",
+    "pydantic-settings",
+    "sqlalchemy",
+    "sqlalchemy-utils",
+    "loguru",
+    "uvicorn",
+    "requests>=2.32.5",
+    "alembic>=1.18.5",
+    "psycopg[binary,pool]",
+    "psycopg2>=2.9.12",
 ]
 
 [project.urls]
@@ -25,3 +35,91 @@ Homepage = "https://github.com/simonsobs/archivist"
 
 [tool.setuptools_scm]
 write_to = "src/archivist/_version.py"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.10.7",
+    "coveralls>=4.0.1",
+    "httpx>=0.28.1",
+    "ipython>=9.15.0",
+    "isort>=6.1.0",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.1.0",
+    "pytest-random-order>=1.2.0",
+    "ruff>=0.15.17",
+]
+
+[project.scripts]
+archivist = "archivist.__main__:main"
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["alembic", "tests"]
+
+[tool.ruff.lint]
+ignore = ["ANN001",
+          "SIM118",
+          "T201",
+          "D100",
+          "INP001",
+          "D212",
+          "PTH119",
+          "D415",
+          "D103",
+          "D411",
+          "D410",
+          "COM812",
+          "D205",
+          "S101",
+          "D202",
+          "SLF001",
+          "D401",
+          "D400",
+          "FBT001",
+          "ANN202",
+          "PTH123",
+          "FBT002",
+          "ANN201",
+          "F401",
+          "F841",
+          "DTZ006",
+          "DTZ005"
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 80
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/scripts/*" = [
+  "INP001",
+  "T201",
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+known-first-party = ["archivist"]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[tool.isort]
+profile = "black"
+line_length = 120
+# extend_skip, not skip: `skip` replaces isort's defaults, which is what was
+# sending it into .venv/site-packages.
+extend_skip = ["_version.py", "alembic", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "--random-order --cov=archivist --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["archivist"]
+branch = true
