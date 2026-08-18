@@ -10,7 +10,7 @@ retries survive a restart.
 """
 
 import datetime
-from typing import Callable
+from collections.abc import Callable
 
 import loguru
 from sqlalchemy import or_
@@ -35,7 +35,7 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
     instead of spinning.
     """
     settings = get_settings()
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     session = session_maker()
     try:
         item = (
@@ -81,7 +81,7 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
             )
             item.callback_sent()
             loguru.logger.info(f"Reported archive {item.id} to '{librarian_name}'.")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             error = str(exc)[:1024]
             if item.callback_attempts >= settings.callback_max_attempts:
                 item.callback_failed(error)

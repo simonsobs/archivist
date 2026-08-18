@@ -65,7 +65,6 @@ class StorageDisk(Storage):
 
     def _extract(self, archive_name, storage_info, outdir, paths=None):
         """Extract files from tar archives."""
-        pass
 
     def _verify(self, archive: ArchiveJob) -> bool:
         """Return True only if the destination already fully satisfies the manifest."""

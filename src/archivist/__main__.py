@@ -120,14 +120,12 @@ def archive(ctx, source_path, librarian_name, manifest_id):
     if client is not None and client.auth_token:
         headers["Authorization"] = f"Bearer {client.auth_token}"
 
-    try:
-        req = requests.post(
-            f"http://{settings.host}:{settings.port}/api/v1/archive",
-            json=manifest_request.model_dump(mode="json"),
-            headers=headers,
-        )
-    except (TimeoutError, requests.exceptions.ConnectionError) as ex:
-        raise ex
+    req = requests.post(
+        f"http://{settings.host}:{settings.port}/api/v1/archive",
+        json=manifest_request.model_dump(mode="json"),
+        headers=headers,
+        timeout=30,
+    )
 
     click.echo(f"Status code: {req.status_code}")
 
@@ -153,7 +151,6 @@ def extract(ctx, archive, dest_path):
     """Command to record a job.
     For example: `slurmise record "-o 2 -i 3 -m fast"`
     """
-    pass
 
 
 @main.command()

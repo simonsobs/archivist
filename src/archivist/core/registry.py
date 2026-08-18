@@ -3,7 +3,7 @@
 """Classes for working with archive registries."""
 
 
-class Registry(object):
+class Registry:
     """Base class representing a registry of archives."""
 
     def __init__(self):

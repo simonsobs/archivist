@@ -67,7 +67,7 @@ class Archive(db.Base):
             id=manifest.id,
             manifest=manifest,
             archive_root=archive_root,
-            created_time=datetime.datetime.now(datetime.timezone.utc),
+            created_time=datetime.datetime.now(datetime.UTC),
             retries=0,
         )
 
@@ -83,7 +83,7 @@ class Archive(db.Base):
         item = session.execute(stmt).unique().scalar()
         if item is not None:
             item.consumed = True
-            item.consumed_time = datetime.datetime.now(datetime.timezone.utc)
+            item.consumed_time = datetime.datetime.now(datetime.UTC)
             session.commit()
         return item
 
@@ -113,7 +113,7 @@ class Archive(db.Base):
         """
 
         self.completed = True
-        self.completed_time = datetime.datetime.now(datetime.timezone.utc)
+        self.completed_time = datetime.datetime.now(datetime.UTC)
 
         session.commit()
 
@@ -129,7 +129,7 @@ class Archive(db.Base):
 
         self.failed = True
         self.completed = True
-        self.completed_time = datetime.datetime.now(datetime.timezone.utc)
+        self.completed_time = datetime.datetime.now(datetime.UTC)
 
         session.commit()
 
@@ -143,7 +143,7 @@ class Archive(db.Base):
 
         self.callback_state = "pending"
         self.callback_attempts = 0
-        self.callback_next_retry = datetime.datetime.now(datetime.timezone.utc)
+        self.callback_next_retry = datetime.datetime.now(datetime.UTC)
         self.callback_last_error = None
 
     def skip_callback(self):

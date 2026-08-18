@@ -2,7 +2,7 @@
 Core database runner for SQLAlchemy.
 """
 
-from typing import Generator
+from collections.abc import Generator
 
 from loguru import logger
 from sqlalchemy import (
@@ -93,6 +93,6 @@ def create_all() -> None:
     first so their table definitions are registered with `Base`.
     """
 
-    from . import orm  # noqa: F401
+    from . import orm
 
     Base.metadata.create_all(get_engine())

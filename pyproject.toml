@@ -55,6 +55,7 @@ archivist = "archivist.__main__:main"
 
 [tool.ruff]
 line-length = 120
+extend-exclude = ["alembic", "tests"]
 
 [tool.ruff.lint]
 ignore = ["ANN001",
@@ -81,28 +82,22 @@ ignore = ["ANN001",
           "FBT002",
           "ANN201",
           "F401",
-          "F841"
+          "F841",
+          "DTZ006",
+          "DTZ005"
 ]
 
 [tool.ruff.format]
 docstring-code-format = true
 docstring-code-line-length = 80
 
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
+
 [tool.ruff.lint.per-file-ignores]
 "**/scripts/*" = [
   "INP001",
   "T201",
-]
-"**/tests/**/*" = [
-  "PLC1901",
-  "PLR2004",
-  "PLR6301",
-  "S",
-  "TID252",
-  "T201",
-  "DTZ005",
-  "N802",
-  "ARG005"
 ]
 
 [tool.ruff.lint.flake8-tidy-imports]
@@ -118,7 +113,9 @@ mark-parentheses = false
 [tool.isort]
 profile = "black"
 line_length = 120
-skip = ["_version.py"]
+# extend_skip, not skip: `skip` replaces isort's defaults, which is what was
+# sending it into .venv/site-packages.
+extend_skip = ["_version.py", "alembic", "tests"]
 
 [tool.pytest.ini_options]
 addopts = "--random-order --cov=archivist --cov-report=term-missing --cov-report=xml"

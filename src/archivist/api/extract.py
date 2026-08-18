@@ -20,5 +20,3 @@ def extract(
     """
     # Here you would implement the logic to handle the extraction process
     # For now, we will just return a dummy response
-
-    pass

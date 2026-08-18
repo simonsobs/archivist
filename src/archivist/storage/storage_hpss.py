@@ -13,8 +13,6 @@ class StorageHPSS(Storage):
         """Use HTAR to archive files.
         The tape list is returned for including in the registry entry.
         """
-        pass
 
     def _extract(self, archive_name, storage_info, outdir, paths=None):
         """Extract files from HTAR archives."""
-        pass

@@ -1,6 +1,6 @@
 import queue
+from collections.abc import Callable
 from time import sleep
-from typing import Callable
 
 import loguru
 from sqlalchemy.orm import Session
@@ -93,7 +93,7 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
                         item.callback_pending()
                     item.complete(session)
                     loguru.logger.info(f"Archive {storage_task._archive.manifest_id} completed successfully.")
-                except Exception:
+                except Exception:  # noqa: BLE001
                     loguru.logger.exception(f"Archive {storage_task._archive.manifest_id} failed to store.")
                     item.fail(session)
             finally:
@@ -106,7 +106,7 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
 
         status_queue.task_done()
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         loguru.logger.error(f"Error processing status queue: {e}")
         sleep(1)  # Sleep for a short duration to avoid busy waiting
         return True
@@ -154,7 +154,7 @@ def reconcile_orphaned_archives(
                 else:
                     item.requeue(session)
                     loguru.logger.info(f"Requeued orphan {item.id} (retry {item.retries}).")
-            except Exception:
+            except Exception:  # noqa: BLE001
                 loguru.logger.exception(f"Failed to reconcile orphan {getattr(item, 'manifest_id', '?')}; skipping.")
     finally:
         session.close()

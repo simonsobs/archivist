@@ -210,14 +210,14 @@ def get_settings() -> "Settings":
                 _settings = Settings.from_file(path)
             except ValidationError as e:
                 print(f"Error loading settings from {path}: {e}")
-                raise e
+                raise
 
             return _settings
     try:
         _settings = Settings()
     except ValidationError as e:
         print(f"Not all settings have defaults: {e}")
-        raise e
+        raise
 
     return _settings
 
@@ -228,8 +228,6 @@ def __getattr__(name) -> Settings:
     """
 
     if name == "server_settings":
-        global _settings
-
         if _settings is not None:
             return _settings
 

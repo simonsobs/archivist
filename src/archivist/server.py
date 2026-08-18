@@ -23,7 +23,7 @@ def _archive_worker_loop():
     while not _archive_stop_event.is_set():
         try:
             start_archive(librarian_name=server_settings.name)
-        except Exception:
+        except Exception as ex:  # noqa: BLE001
             logger.exception("Archive worker iteration failed")
 
 
@@ -35,7 +35,7 @@ def _status_worker_loop():
     while not _archive_stop_event.is_set():
         try:
             process_status_queue()
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.exception("Archive worker iteration failed")
 
 
@@ -49,7 +49,7 @@ def _callback_worker_loop():
     while not _archive_stop_event.is_set():
         try:
             did_work = process_callbacks()
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.exception("Callback worker iteration failed")
             did_work = False
         # The callback queue is backoff-driven, so idle between polls instead

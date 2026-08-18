@@ -49,7 +49,7 @@ class Manifest(db.Base):
             id=manifest_id,
             librarian_name=librarian_name,
             archive_name=archive_name,
-            created_time=datetime.datetime.now(datetime.timezone.utc),
+            created_time=datetime.datetime.now(datetime.UTC),
         )
         session.add(manifest)
         return manifest

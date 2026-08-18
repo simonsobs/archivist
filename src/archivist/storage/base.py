@@ -2,7 +2,7 @@ from archivist.core.archive_job import ArchiveJob
 from archivist.settings import Settings
 
 
-class Storage(object):
+class Storage:
     """Base class representing an archive storage system."""
 
     def __init__(self, settings: Settings | None = None):
