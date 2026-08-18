@@ -15,7 +15,7 @@ from unittest import mock
 
 import pytest
 from click.testing import CliRunner
-from conftest import make_archive_item
+from conftest import CLI_TOKEN, make_archive_item
 
 import archivist.__main__ as cli_module
 from archivist.__main__ import main
@@ -43,7 +43,7 @@ def post():
     """Patch out the HTTP call to the server and hand back the mock."""
 
     response = mock.Mock(status_code=200)
-    response.json.return_value = {"manifest_id": "abc-123"}
+    response.json.return_value = {"manifest_id": "abc-123", "archive_id": "abc-123"}
 
     with mock.patch.object(cli_module.requests, "post", return_value=response) as mock_post:
         yield mock_post
@@ -78,6 +78,32 @@ def test_archive_builds_a_manifest_from_the_source_path(config_path, post, setti
     assert entry["checksum"] == hashlib.sha256(b"a").hexdigest()
 
 
+def test_archive_sends_the_token_filed_under_the_submitting_name(config_path, post, settings):
+    source = Path(settings.local_root) / "file.txt"
+    source.write_text("hello")
+
+    result = CliRunner().invoke(main, ["-c", str(config_path), "archive", "--source-path", str(source)])
+
+    assert result.exit_code == 0
+    assert post.call_args.kwargs["headers"]["Authorization"] == f"Bearer {CLI_TOKEN}"
+
+
+def test_archive_fails_early_when_the_submitting_name_has_no_token(config_path, post, settings):
+    """Fails before walking the source tree, with a message naming the fix."""
+
+    source = Path(settings.local_root) / "file.txt"
+    source.write_text("hello")
+
+    result = CliRunner().invoke(
+        main,
+        ["-c", str(config_path), "archive", "--source-path", str(source), "--librarian-name", "unconfigured"],
+    )
+
+    assert result.exit_code == 1
+    assert "clients" in result.output
+    post.assert_not_called()
+
+
 def test_archive_under_a_named_librarian_is_attributed_to_it(config_path, post, settings):
     """Naming a librarian opts the job into a callback, and sets the uploader."""
 
@@ -86,13 +112,13 @@ def test_archive_under_a_named_librarian_is_attributed_to_it(config_path, post, 
 
     result = CliRunner().invoke(
         main,
-        ["-c", str(config_path), "archive", "--source-path", str(source), "--librarian-name", "custom-librarian"],
+        ["-c", str(config_path), "archive", "--source-path", str(source), "--librarian-name", "test-librarian"],
     )
 
     assert result.exit_code == 0
     body = post.call_args.kwargs["json"]
-    assert body["librarian_name"] == "custom-librarian"
-    assert body["archive_files"][0]["uploader"] == "custom-librarian"
+    assert body["librarian_name"] == "test-librarian"
+    assert body["archive_files"][0]["uploader"] == "test-librarian"
 
 
 def test_resend_callback_resets_an_exhausted_callback_to_pending(config_path, db_session, archive_root):

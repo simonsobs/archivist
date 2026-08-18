@@ -47,6 +47,11 @@ def main(ctx, config):
 def archive(ctx, source_path, librarian_name, manifest_id):
     """Command to archive a file.
     For example: `archivist -c config archive "--source-path /path/to/source --dest-path /path/to/dest"`
+
+    Submissions authenticate with the token filed under the submitting name in
+    `clients`. `--librarian-name` therefore submits as that Librarian, using
+    its token: not a privilege escalation, since running the CLI already means
+    reading the config file that holds every token in it.
     """
     # Here you would implement the logic to handle the archiving process
     # For now, we will just print the source and destination paths
@@ -58,6 +63,19 @@ def archive(ctx, source_path, librarian_name, manifest_id):
     # completed job is never reported back to a real Librarian.
     if librarian_name is None:
         librarian_name = settings.cli_librarian_name
+
+    # The CLI submits over the same authenticated endpoint as a Librarian, so
+    # it needs the token filed under the name it is submitting as. Resolved
+    # before any checksumming: a misconfiguration should not cost a full walk
+    # of the source tree first.
+    client = settings.clients.get(librarian_name)
+    if settings.require_client_auth and (client is None or not client.auth_token):
+        click.secho("[ERROR]", fg="red", nl=False, err=True)
+        click.echo(
+            f" No token configured for '{librarian_name}'; add it under `clients` in the config file.",
+            err=True,
+        )
+        sys.exit(1)
 
     source_root = Path(source_path).absolute()
 
@@ -98,9 +116,15 @@ def archive(ctx, source_path, librarian_name, manifest_id):
         archive_name=settings.name,
         archive_files=archive_files,
     )
+    headers = {}
+    if client is not None and client.auth_token:
+        headers["Authorization"] = f"Bearer {client.auth_token}"
+
     try:
         req = requests.post(
-            f"http://{settings.host}:{settings.port}/api/v1/archive", json=manifest_request.model_dump(mode="json")
+            f"http://{settings.host}:{settings.port}/api/v1/archive",
+            json=manifest_request.model_dump(mode="json"),
+            headers=headers,
         )
     except (TimeoutError, requests.exceptions.ConnectionError) as ex:
         raise ex
@@ -154,6 +178,12 @@ def resend_callback(ctx, manifest_id):
             items = session.query(Archive).filter_by(id=manifest_id).all()
         else:
             items = session.query(Archive).filter_by(callback_state="failed").all()
+        if manifest_id is not None and not items:
+            # A named manifest that matches nothing is an operator mistake, not
+            # a no-op worth reporting as success.
+            click.secho("[ERROR]", fg="red", nl=False, err=True)
+            click.echo(f" No completed archive for manifest {manifest_id}", err=True)
+            return
         click.echo(f"Resetting {len(items)} callback(s) to pending.")
         for item in items:
             if not item.completed:

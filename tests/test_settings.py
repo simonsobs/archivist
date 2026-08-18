@@ -97,6 +97,30 @@ def test_librarian_callback_config_parses_and_reads_its_token_file(tmp_path):
     assert settings.librarians["lib-b"].auth_token == "bearer-secret"
 
 
+def test_client_config_reads_its_token_file(tmp_path):
+    """The token lives in a file both Archivist and the submitting Librarian read."""
+
+    token_path = tmp_path / "token.txt"
+    token_path.write_text("shared-secret\n")
+
+    settings = Settings(clients={"lib": {"auth_token_file": str(token_path)}})
+
+    assert settings.clients["lib"].auth_token == "shared-secret"
+
+
+def test_an_enabled_client_without_a_credential_is_rejected():
+    with pytest.raises(ValidationError):
+        Settings(clients={"lib": {}})
+
+
+def test_a_client_named_like_the_cli_sentinel_is_allowed():
+    """Unlike `librarians`, a sentinel entry here is how the CLI authenticates."""
+
+    settings = Settings(clients={"__cli__": {"auth_token": "t"}})
+
+    assert settings.clients["__cli__"].auth_token == "t"
+
+
 def test_a_librarian_named_like_the_cli_sentinel_is_rejected():
     """CLI jobs run under the sentinel and never call back; a real librarian must not shadow it."""
 

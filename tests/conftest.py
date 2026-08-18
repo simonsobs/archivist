@@ -8,10 +8,15 @@ import pytest
 import archivist.database as database
 import archivist.queue as queue_module
 import archivist.settings as settings_module
-from archivist.settings import LibrarianCallbackConfig, Settings
+from archivist.settings import ClientConfig, LibrarianCallbackConfig, Settings
 from archivist.storage.storage_disk import StorageDisk
 
 LIBRARIAN_URL = "https://librarian.example.org"
+
+# Distinct per client: a token shared between two entries would make the
+# submitter Archivist resolves depend on dict order.
+LIBRARIAN_TOKEN = "librarian-token"
+CLI_TOKEN = "cli-token"
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +73,10 @@ def settings(tmp_path, archive_root, local_root) -> Settings:
         archive_root=str(archive_root),
         local_root=str(local_root),
         librarians={"test-librarian": LibrarianCallbackConfig(url=LIBRARIAN_URL)},
+        clients={
+            "test-librarian": ClientConfig(auth_token=LIBRARIAN_TOKEN),
+            "__cli__": ClientConfig(auth_token=CLI_TOKEN),
+        },
         callback_poll_interval_seconds=0.01,  # keep the callback worker's idle wait out of test runtime
     )
 

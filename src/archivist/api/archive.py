@@ -5,6 +5,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from archivist.api import router
+from archivist.api.auth import SubmitterDependency
 from archivist.core.models import ManifestFailedResponse, ManifestRequest, ManifestResponse
 from archivist.database import yield_session
 from archivist.orm import Archive, Manifest, ManifestEntry
@@ -15,12 +16,16 @@ from archivist.settings import Settings, get_settings
 def archive(
     manifest_request: ManifestRequest,
     response: Response,
+    submitter: SubmitterDependency,
     session: Session = Depends(yield_session),
     settings: Settings = Depends(get_settings),
 ):
-    """
-    Endpoint to archive a file.
-    """
+
+    if submitter is not None and submitter != manifest_request.librarian_name:
+        response.status_code = 403
+        logger.error(f"Client '{submitter}' submitted a manifest claiming to be '{manifest_request.librarian_name}'.")
+        return ManifestFailedResponse(error="Token does not match the submitting librarian.")
+
     # Here you would implement the logic to handle the archiving process
     # For now, we will just return a dummy response
 

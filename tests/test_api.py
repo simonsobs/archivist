@@ -11,7 +11,7 @@ to exercising the HTTP endpoints themselves.
 """
 
 import pytest
-from conftest import make_manifest_request
+from conftest import LIBRARIAN_TOKEN, make_manifest_request
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -23,8 +23,7 @@ from archivist.orm.manifest import Manifest
 from archivist.settings import get_settings
 
 
-@pytest.fixture
-def client(db_session, use_settings):
+def _client(db_session, use_settings, token=None):
     app = FastAPI()
     app.include_router(api_router)
     app.include_router(health_router)
@@ -35,7 +34,20 @@ def client(db_session, use_settings):
     app.dependency_overrides[get_settings] = lambda: use_settings
     app.dependency_overrides[yield_session] = _yield_session
 
-    return TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    return TestClient(app, headers=headers)
+
+
+@pytest.fixture
+def client(db_session, use_settings):
+    """Authenticated as `test-librarian`, the name manifests are submitted under."""
+
+    return _client(db_session, use_settings, LIBRARIAN_TOKEN)
+
+
+@pytest.fixture
+def anon_client(db_session, use_settings):
+    return _client(db_session, use_settings)
 
 
 def test_health(client, use_settings):
@@ -56,6 +68,63 @@ def test_archive_queues_the_manifest_and_returns_its_id(client, db_session):
     item = db_session.query(Archive).filter_by(id=manifest_id).one()
     assert not item.consumed
     assert not item.completed
+
+
+@pytest.mark.parametrize("token", [None, "wrong-token"], ids=["no-token", "unknown-token"])
+def test_archive_rejects_an_unauthenticated_submission(anon_client, db_session, token):
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    response = anon_client.post("/api/v1/archive", json=make_manifest_request(json_safe=True), headers=headers)
+
+    assert response.status_code == 401
+    assert db_session.query(Archive).count() == 0
+
+
+def test_archive_rejects_a_manifest_naming_another_librarian(client, db_session):
+    """A valid token is not a licence to submit under someone else's name."""
+
+    payload = make_manifest_request(json_safe=True)
+    payload["librarian_name"] = "other-librarian"
+
+    assert client.post("/api/v1/archive", json=payload).status_code == 403
+    assert db_session.query(Archive).count() == 0
+
+
+def test_disabling_auth_accepts_an_unauthenticated_submission(anon_client, use_settings):
+    """The rollout switch: it has to actually open, or staging the change is impossible."""
+
+    use_settings.require_client_auth = False
+
+    assert anon_client.post("/api/v1/archive", json=make_manifest_request(json_safe=True)).status_code == 200
+
+
+def test_a_disabled_clients_token_stops_working(anon_client, use_settings, db_session):
+    """Revocation path: `enabled: false` without dropping the entry and its token file."""
+
+    use_settings.clients["test-librarian"].enabled = False
+
+    response = anon_client.post(
+        "/api/v1/archive",
+        json=make_manifest_request(json_safe=True),
+        headers={"Authorization": f"Bearer {LIBRARIAN_TOKEN}"},
+    )
+
+    assert response.status_code == 401
+    assert db_session.query(Archive).count() == 0
+
+
+def test_auth_is_checked_before_the_size_limit(anon_client, use_settings):
+    """An unauthorised caller shouldn't be able to probe limits."""
+
+    use_settings.maximal_size_bytes = 100
+
+    response = anon_client.post("/api/v1/archive", json=make_manifest_request(json_safe=True, size=1_000_000))
+
+    assert response.status_code == 401
+
+
+def test_health_needs_no_token(anon_client):
+    assert anon_client.get("/health").status_code == 200
 
 
 def test_archive_rejects_manifests_over_the_size_limit(client, use_settings):
