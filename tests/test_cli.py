@@ -15,7 +15,7 @@ from unittest import mock
 
 import pytest
 from click.testing import CliRunner
-from conftest import CLI_TOKEN, make_archive_item
+from conftest import CLI_CREDENTIALS, make_archive_item
 
 import archivist.__main__ as cli_module
 from archivist.__main__ import main
@@ -78,17 +78,17 @@ def test_archive_builds_a_manifest_from_the_source_path(config_path, post, setti
     assert entry["checksum"] == hashlib.sha256(b"a").hexdigest()
 
 
-def test_archive_sends_the_token_filed_under_the_submitting_name(config_path, post, settings):
+def test_archive_sends_the_credentials_filed_under_the_submitting_name(config_path, post, settings):
     source = Path(settings.local_root) / "file.txt"
     source.write_text("hello")
 
     result = CliRunner().invoke(main, ["-c", str(config_path), "archive", "--source-path", str(source)])
 
     assert result.exit_code == 0
-    assert post.call_args.kwargs["headers"]["Authorization"] == f"Bearer {CLI_TOKEN}"
+    assert post.call_args.kwargs["auth"] == CLI_CREDENTIALS
 
 
-def test_archive_fails_early_when_the_submitting_name_has_no_token(config_path, post, settings):
+def test_archive_fails_early_when_the_submitting_name_has_no_credentials(config_path, post, settings):
     """Fails before walking the source tree, with a message naming the fix."""
 
     source = Path(settings.local_root) / "file.txt"

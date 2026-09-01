@@ -13,10 +13,11 @@ from archivist.storage.storage_disk import StorageDisk
 
 LIBRARIAN_URL = "https://librarian.example.org"
 
-# Distinct per client: a token shared between two entries would make the
-# submitter Archivist resolves depend on dict order.
-LIBRARIAN_TOKEN = "librarian-token"
-CLI_TOKEN = "cli-token"
+# Distinct per client: a pair shared between two entries would make the
+# submitter Archivist resolves depend on dict order. The username is the
+# username half of the Librarian's authenticator, not the librarian name.
+LIBRARIAN_CREDENTIALS = ("archuser", "librarian-password")
+CLI_CREDENTIALS = ("cliuser", "cli-password")
 
 
 @pytest.fixture(autouse=True)
@@ -72,10 +73,18 @@ def settings(tmp_path, archive_root, local_root) -> Settings:
         archive_type="posix",
         archive_root=str(archive_root),
         local_root=str(local_root),
-        librarians={"test-librarian": LibrarianCallbackConfig(url=LIBRARIAN_URL)},
+        librarians={
+            "test-librarian": LibrarianCallbackConfig(
+                url=LIBRARIAN_URL,
+                username=LIBRARIAN_CREDENTIALS[0],
+                password=LIBRARIAN_CREDENTIALS[1],
+            )
+        },
         clients={
-            "test-librarian": ClientConfig(auth_token=LIBRARIAN_TOKEN),
-            "__cli__": ClientConfig(auth_token=CLI_TOKEN),
+            "test-librarian": ClientConfig(
+                username=LIBRARIAN_CREDENTIALS[0], password=LIBRARIAN_CREDENTIALS[1]
+            ),
+            "__cli__": ClientConfig(username=CLI_CREDENTIALS[0], password=CLI_CREDENTIALS[1]),
         },
         callback_poll_interval_seconds=0.01,  # keep the callback worker's idle wait out of test runtime
     )
@@ -187,7 +196,6 @@ def make_manifest_request(id="m1", json_safe=False, **overrides):
     return {
         "manifest_id": id,
         "librarian_name": "test-librarian",
-        "archive_name": "test-archive",
         "archive_files": [entry],
     }
 

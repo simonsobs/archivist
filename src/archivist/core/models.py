@@ -39,9 +39,6 @@ class ManifestRequest(BaseModel):
     librarian_name: str
     "The name of the librarian that generated this manifest."
 
-    archive_name: str
-    "The name of the archive."
-
     archive_files: list[ManifestEntry]
     "The files on the archive."
 

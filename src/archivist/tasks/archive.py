@@ -45,7 +45,7 @@ def start_archive(
         loguru.logger.info(f"Archive Item: {manifest}, {type(archive_item)}")
         archive = ArchiveJob(
             manifest=manifest,
-            manifest_id=archive_item.id,
+            manifest_id=archive_item.manifest_id,
             local_root=settings.local_root,
             archive_root=archive_item.archive_root,
             type=settings.archive_type,
@@ -79,7 +79,7 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
             loguru.logger.debug(f"Storage task for archive {storage_task._archive.manifest_id} future completed.")
             session = session_maker()
             try:
-                item = session.query(Archive).filter_by(id=storage_task._archive.manifest_id).first()
+                item = session.query(Archive).filter_by(manifest_id=storage_task._archive.manifest_id).first()
                 loguru.logger.debug(
                     f"Retrieved Archive item for manifest_id {storage_task._archive.manifest_id}: {item}"
                 )
@@ -138,7 +138,7 @@ def reconcile_orphaned_archives(
                 }
                 archive = ArchiveJob(
                     manifest=manifest,
-                    manifest_id=item.id,
+                    manifest_id=item.manifest_id,
                     local_root=settings.local_root,
                     archive_root=item.archive_root,
                     type=settings.archive_type,

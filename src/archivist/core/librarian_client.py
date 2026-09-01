@@ -17,7 +17,7 @@ CALLBACK_PATH = "api/v2/archive/callback"
 def send_archive_callback(
     config: LibrarianCallbackConfig,
     manifest_id: str,
-    archive_name: str,
+    archivist_name: str,
     archive_id: str,
     archive_path: str,
     timeout: float = 30.0,
@@ -32,13 +32,17 @@ def send_archive_callback(
     Parameters
     ----------
     config : LibrarianCallbackConfig
-        The destination Librarian's base URL and (optional) auth token.
+        The destination Librarian's base URL and (optional) Basic credentials.
     manifest_id : str
         The manifest that has been archived.
-    archive_name : str
-        The archive name the Librarian sent with the manifest.
+    archivist_name : str
+        This Archivist's own configured name. Load-bearing rather than
+        informational: the Librarian uses it to select whose stored
+        credentials to verify the Basic auth against, so it must match the
+        name it registered via `librarian add-archivist --name ...`.
     archive_id : str
-        Archivist's ID for the archive (the same value as `manifest_id`).
+        Archivist's own ID for the archive; the Librarian keys the callback
+        on it.
     archive_path : str
         Where the archived data landed.
     timeout : float
@@ -50,18 +54,17 @@ def send_archive_callback(
         On a transport error or a non-2xx response.
     """
     url = f"{config.url.rstrip('/')}/{CALLBACK_PATH}"
-    headers = {"Content-Type": "application/json"}
-    if config.auth_token:
-        headers["Authorization"] = f"Bearer {config.auth_token}"
+    auth = (config.username, config.password) if config.username and config.password else None
     resp = requests.post(
         url,
         json={
+            "archivist_name": archivist_name,
             "manifest_id": manifest_id,
-            "archive_name": archive_name,
             "archive_id": archive_id,
             "archive_path": archive_path,
         },
-        headers=headers,
+        headers={"Content-Type": "application/json"},
+        auth=auth,
         timeout=timeout,
     )
     resp.raise_for_status()

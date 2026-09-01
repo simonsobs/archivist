@@ -39,8 +39,9 @@ def test_reports_the_oldest_due_archive_and_marks_it_sent(db_session, use_settin
     assert send.call_args.args[0].url == LIBRARIAN_URL
     assert send.call_args.kwargs == {
         "manifest_id": "older",
-        "archive_name": older.manifest.archive_name,
-        "archive_id": "older",
+        # Load-bearing: the Librarian picks whose credentials to check by it.
+        "archivist_name": use_settings.name,
+        "archive_id": older.id,
         "archive_path": str(archive_root),
         "timeout": use_settings.callback_timeout_seconds,
     }
