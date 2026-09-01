@@ -10,8 +10,10 @@ starts busy-looping background worker threads -- since it isn't relevant
 to exercising the HTTP endpoints themselves.
 """
 
+import base64
+
 import pytest
-from conftest import LIBRARIAN_TOKEN, make_manifest_request
+from conftest import LIBRARIAN_CREDENTIALS, make_manifest_request
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -23,7 +25,21 @@ from archivist.orm.manifest import Manifest
 from archivist.settings import get_settings
 
 
-def _client(db_session, use_settings, token=None):
+def _basic(credentials):
+    """An HTTP Basic header for a (username, password) pair, or no headers at all.
+
+    Built here rather than via httpx's `auth=`, which `TestClient.__init__`
+    does not accept.
+    """
+
+    if credentials is None:
+        return {}
+
+    encoded = base64.b64encode(":".join(credentials).encode()).decode()
+    return {"Authorization": f"Basic {encoded}"}
+
+
+def _client(db_session, use_settings, credentials=None):
     app = FastAPI()
     app.include_router(api_router)
     app.include_router(health_router)
@@ -34,15 +50,14 @@ def _client(db_session, use_settings, token=None):
     app.dependency_overrides[get_settings] = lambda: use_settings
     app.dependency_overrides[yield_session] = _yield_session
 
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-    return TestClient(app, headers=headers)
+    return TestClient(app, headers=_basic(credentials))
 
 
 @pytest.fixture
 def client(db_session, use_settings):
     """Authenticated as `test-librarian`, the name manifests are submitted under."""
 
-    return _client(db_session, use_settings, LIBRARIAN_TOKEN)
+    return _client(db_session, use_settings, LIBRARIAN_CREDENTIALS)
 
 
 @pytest.fixture
@@ -65,16 +80,23 @@ def test_archive_queues_the_manifest_and_returns_its_id(client, db_session):
     assert response.status_code == 200
     manifest_id = response.json()["manifest_id"]
 
-    item = db_session.query(Archive).filter_by(id=manifest_id).one()
+    item = db_session.query(Archive).filter_by(manifest_id=manifest_id).one()
     assert not item.consumed
     assert not item.completed
+    # Archivist mints its own archive id; the Librarian stores it in its own
+    # column and no longer requires it to equal the manifest id.
+    assert response.json()["archive_id"] == item.id != manifest_id
 
 
-@pytest.mark.parametrize("token", [None, "wrong-token"], ids=["no-token", "unknown-token"])
-def test_archive_rejects_an_unauthenticated_submission(anon_client, db_session, token):
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-
-    response = anon_client.post("/api/v1/archive", json=make_manifest_request(json_safe=True), headers=headers)
+@pytest.mark.parametrize(
+    "credentials",
+    [None, ("archuser", "wrong-password"), ("nobody", LIBRARIAN_CREDENTIALS[1])],
+    ids=["no-credentials", "wrong-password", "unknown-username"],
+)
+def test_archive_rejects_an_unauthenticated_submission(anon_client, db_session, credentials):
+    response = anon_client.post(
+        "/api/v1/archive", json=make_manifest_request(json_safe=True), headers=_basic(credentials)
+    )
 
     assert response.status_code == 401
     assert db_session.query(Archive).count() == 0
@@ -98,15 +120,15 @@ def test_disabling_auth_accepts_an_unauthenticated_submission(anon_client, use_s
     assert anon_client.post("/api/v1/archive", json=make_manifest_request(json_safe=True)).status_code == 200
 
 
-def test_a_disabled_clients_token_stops_working(anon_client, use_settings, db_session):
-    """Revocation path: `enabled: false` without dropping the entry and its token file."""
+def test_a_disabled_clients_credentials_stop_working(anon_client, use_settings, db_session):
+    """Revocation path: `enabled: false` without dropping the entry and its password file."""
 
     use_settings.clients["test-librarian"].enabled = False
 
     response = anon_client.post(
         "/api/v1/archive",
         json=make_manifest_request(json_safe=True),
-        headers={"Authorization": f"Bearer {LIBRARIAN_TOKEN}"},
+        headers=_basic(LIBRARIAN_CREDENTIALS),
     )
 
     assert response.status_code == 401
@@ -168,7 +190,7 @@ def test_resubmitting_a_manifest_id(client, db_session, resubmitted_name, resubm
     assert client.post("/api/v1/archive", json=second).status_code == expected_status
 
     # Either way, exactly one archive job and the original entry survive.
-    assert db_session.query(Archive).filter_by(id="m-dup").count() == 1
+    assert db_session.query(Archive).filter_by(manifest_id="m-dup").count() == 1
 
     db_session.expire_all()
     manifest = db_session.get(Manifest, "m-dup")

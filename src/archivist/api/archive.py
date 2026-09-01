@@ -49,7 +49,6 @@ def archive(
         session,
         manifest_id=manifest_id,
         librarian_name=manifest_request.librarian_name,
-        archive_name=manifest_request.archive_name,
     )
 
     if manifest.entries:
@@ -58,7 +57,7 @@ def archive(
             # Same id, same content: the retry case. Noop; report the id and
             # leave the already-queued archive untouched.
             logger.info(f"Manifest {manifest_id} already received; returning existing archive job.")
-            return ManifestResponse(manifest_id=str(manifest_id), archive_id=str(manifest.archive.id))
+            return ManifestResponse(manifest_id=str(manifest_id), archive_id=manifest.archive.id)
         # Same id, different content: immutability violated. Reject loudly
         # rather than silently mutating the manifest or dropping the change.
         response.status_code = 409
@@ -98,4 +97,4 @@ def archive(
     session.add(item)
     session.commit()
 
-    return ManifestResponse(manifest_id=str(manifest_id), archive_id=str(item.id))
+    return ManifestResponse(manifest_id=str(manifest_id), archive_id=item.id)

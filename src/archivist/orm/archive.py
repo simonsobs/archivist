@@ -8,6 +8,7 @@ worker thread picks items up and performs the actual archive operation.
 """
 
 import datetime
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -23,10 +24,12 @@ class Archive(db.Base):
 
     __tablename__ = "archive"
 
-    id = db.Column(
-        db.String(36), db.ForeignKey("manifest.id", ondelete="CASCADE"), primary_key=True
-    )  # The same as the manifest ID, since there is a 1:1 relationship.
-    "Archive ID identifying this archive job."
+    id = db.Column(db.String(36), primary_key=True)
+    "Archivist's own ID for the archive, minted here. The Librarian stores it and keys the callback on it."
+    manifest_id = db.Column(
+        db.String(36), db.ForeignKey("manifest.id", ondelete="CASCADE"), nullable=False, unique=True
+    )  # Unique, since there is a 1:1 relationship with the manifest.
+    "The ID of the manifest being archived."
     created_time = db.Column(db.DateTime, nullable=False)
     "The time this job was added to the queue."
     retries = db.Column(db.Integer, nullable=False, default=0)
@@ -64,7 +67,10 @@ class Archive(db.Base):
     @classmethod
     def new_item(cls, manifest: "Manifest", archive_root: str) -> "Archive":
         return cls(
-            id=manifest.id,
+            # Archivist mints its own archive id: the Librarian stores it in
+            # its own column and no longer requires it to equal the manifest
+            # id.
+            id=str(uuid.uuid4()),
             manifest=manifest,
             archive_root=archive_root,
             created_time=datetime.datetime.now(datetime.UTC),

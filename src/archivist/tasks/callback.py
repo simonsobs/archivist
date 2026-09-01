@@ -71,10 +71,10 @@ def process_callbacks(session_maker: Callable[[], Session] = get_session) -> boo
                 raise RuntimeError(f"archive {item.id} completed without an archive path")
             send_archive_callback(
                 config,
-                manifest_id=item.id,
-                archive_name=item.manifest.archive_name,
-                # Archivist's archive id is the manifest id; the Librarian
-                # checks the two agree before recording anything.
+                manifest_id=item.manifest_id,
+                # The Librarian looks its stored credentials up by this name
+                # to authenticate the callback, so it must be our own.
+                archivist_name=settings.name,
                 archive_id=item.id,
                 archive_path=item.archive_path,
                 timeout=settings.callback_timeout_seconds,

@@ -46,7 +46,7 @@ def _drain_until_completed(session, id, timeout=5):
     while time.time() < deadline:
         process_status_queue()
         session.expire_all()
-        item = session.query(Archive).filter_by(id=id).one()
+        item = session.query(Archive).filter_by(manifest_id=id).one()
         if item.completed:
             return item
         time.sleep(0.05)
@@ -84,8 +84,8 @@ def test_start_archive_takes_the_oldest_row_and_copies_its_files(
     start_archive(librarian_name="test-librarian")
 
     # One job per pass, oldest first: `newer` waits for the worker's next lap.
-    assert db_session.query(Archive).filter_by(id="older").one().consumed
-    assert not db_session.query(Archive).filter_by(id="newer").one().consumed
+    assert db_session.query(Archive).filter_by(manifest_id="older").one().consumed
+    assert not db_session.query(Archive).filter_by(manifest_id="newer").one().consumed
 
     task = get_status_queue().dequeue(block=False)
     task.future.result(timeout=5)

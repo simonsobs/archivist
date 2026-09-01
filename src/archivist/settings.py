@@ -10,8 +10,13 @@ from sqlalchemy import URL
 class LibrarianCallbackConfig(BaseModel):
     # Base URL of the Librarian; the callback path is appended to this.
     url: str
-    auth_token: str | None = None
-    auth_token_file: Path | None = None
+
+    # Presented as HTTP Basic when reporting a completed archive. The
+    # Librarian verifies it against the `authenticator` on its own row for
+    # this Archivist.
+    username: str | None = None
+    password: str | None = None
+    password_file: Path | None = None
 
 
 class ClientConfig(BaseModel):
@@ -21,22 +26,31 @@ class ClientConfig(BaseModel):
     The inbound counterpart to `LibrarianCallbackConfig`: that one is the
     credential Archivist *presents* when reporting a completed archive, this
     one is the credential Archivist *accepts* when work is submitted to it.
-    They are separate secrets held by different parties and should never be
-    set to the same value.
+    For a Librarian peer the two are deliberately the *same* pair: the
+    Librarian keeps a single `archivists.authenticator` row and uses it in
+    both directions, so there is one credential to provision and nothing to
+    keep in sync.
+
+    The username is the username half of that authenticator, not the
+    Librarian's name; the key this config is filed under is the identity
+    Archivist resolves a submission to, and the one it checks the manifest's
+    `librarian_name` against. Two clients sharing a pair makes that
+    resolution ambiguous, so keep them distinct.
     """
 
-    # Shared secret this client presents as `Authorization: Bearer <token>`.
-    auth_token: str | None = None
-    auth_token_file: Path | None = None
+    # Credentials this client presents as HTTP Basic.
+    username: str | None = None
+    password: str | None = None
+    password_file: Path | None = None
 
-    # Lets a peer be turned off without dropping its config -- and its token
-    # file path -- out of the deployment.
+    # Lets a peer be turned off without dropping its config -- and its
+    # password file path -- out of the deployment.
     enabled: bool = True
 
     @model_validator(mode="after")
     def _credential_present(self) -> "ClientConfig":
-        if self.enabled and self.auth_token is None and self.auth_token_file is None:
-            raise ValueError("An enabled client needs an auth_token or auth_token_file.")
+        if self.enabled and (self.username is None or (self.password is None and self.password_file is None)):
+            raise ValueError("An enabled client needs a username and a password or password_file.")
         return self
 
 
@@ -148,16 +162,16 @@ class Settings(BaseSettings):
                 __context.database_password = handle.read().strip()
 
         for name, cfg in __context.librarians.items():
-            if cfg.auth_token_file is not None:
-                with open(cfg.auth_token_file, "r") as handle:
-                    cfg.auth_token = handle.read().strip()
+            if cfg.password_file is not None:
+                with open(cfg.password_file, "r") as handle:
+                    cfg.password = handle.read().strip()
             if name == __context.cli_librarian_name:
                 raise ValueError(f"Configured librarian '{name}' collides with cli_librarian_name.")
 
         for cfg in __context.clients.values():
-            if cfg.auth_token_file is not None:
-                with open(cfg.auth_token_file, "r") as handle:
-                    cfg.auth_token = handle.read().strip()
+            if cfg.password_file is not None:
+                with open(cfg.password_file, "r") as handle:
+                    cfg.password = handle.read().strip()
 
     @property
     def sqlalchemy_database_uri(self) -> URL:
