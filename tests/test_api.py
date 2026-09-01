@@ -10,6 +10,8 @@ starts busy-looping background worker threads -- since it isn't relevant
 to exercising the HTTP endpoints themselves.
 """
 
+import base64
+
 import pytest
 from conftest import LIBRARIAN_CREDENTIALS, make_manifest_request
 from fastapi import FastAPI
@@ -23,6 +25,20 @@ from archivist.orm.manifest import Manifest
 from archivist.settings import get_settings
 
 
+def _basic(credentials):
+    """An HTTP Basic header for a (username, password) pair, or no headers at all.
+
+    Built here rather than via httpx's `auth=`, which `TestClient.__init__`
+    does not accept.
+    """
+
+    if credentials is None:
+        return {}
+
+    encoded = base64.b64encode(":".join(credentials).encode()).decode()
+    return {"Authorization": f"Basic {encoded}"}
+
+
 def _client(db_session, use_settings, credentials=None):
     app = FastAPI()
     app.include_router(api_router)
@@ -34,7 +50,7 @@ def _client(db_session, use_settings, credentials=None):
     app.dependency_overrides[get_settings] = lambda: use_settings
     app.dependency_overrides[yield_session] = _yield_session
 
-    return TestClient(app, auth=credentials)
+    return TestClient(app, headers=_basic(credentials))
 
 
 @pytest.fixture
@@ -79,7 +95,7 @@ def test_archive_queues_the_manifest_and_returns_its_id(client, db_session):
 )
 def test_archive_rejects_an_unauthenticated_submission(anon_client, db_session, credentials):
     response = anon_client.post(
-        "/api/v1/archive", json=make_manifest_request(json_safe=True), auth=credentials
+        "/api/v1/archive", json=make_manifest_request(json_safe=True), headers=_basic(credentials)
     )
 
     assert response.status_code == 401
@@ -112,7 +128,7 @@ def test_a_disabled_clients_credentials_stop_working(anon_client, use_settings, 
     response = anon_client.post(
         "/api/v1/archive",
         json=make_manifest_request(json_safe=True),
-        auth=LIBRARIAN_CREDENTIALS,
+        headers=_basic(LIBRARIAN_CREDENTIALS),
     )
 
     assert response.status_code == 401
