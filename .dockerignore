@@ -1,0 +1,21 @@
+# Allowlist: exclude everything, then add back only what the build needs.
+# Keeps the context to the source tree plus git metadata, rather than the
+# 172MB the repo weighs with .venv and local state in it.
+*
+
+# The package itself. README.md and LICENSE are not optional -- pyproject.toml
+# declares them via `readme` and `license-files`, so the build fails without them.
+!src
+!pyproject.toml
+!README.md
+!LICENSE
+
+# Migrations. Small, and the only way to upgrade an existing database.
+!alembic
+!alembic.ini
+
+# setuptools-scm reads the version from here. Dropping it breaks the build.
+!.git
+
+# Re-exclude caches that live inside the directories added back above.
+**/__pycache__

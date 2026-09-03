@@ -66,11 +66,7 @@ async def startup_shutdown_server(app: FastAPI):
     """
     from loguru import logger
 
-    from .database import create_all
-
     logger.info("Archivist server starting up")
-
-    create_all()
 
     reconcile_orphaned_archives()
 
