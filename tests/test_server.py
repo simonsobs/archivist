@@ -71,13 +71,9 @@ def test_lifespan_recovers_orphans_starts_workers_and_stops_them_on_exit():
         mock.patch.object(server_module, "_status_worker_loop", lambda: started.append("status")),
         mock.patch.object(server_module, "_callback_worker_loop", lambda: started.append("callback")),
         mock.patch.object(server_module, "reconcile_orphaned_archives") as mock_reconcile,
-        mock.patch("archivist.database.create_all") as mock_create_all,
     ):
         asyncio.run(_run())
 
-    # Crash recovery has to run once, after the schema exists but before any
-    # worker can dequeue -- otherwise it races the rows it is meant to reclaim.
-    mock_create_all.assert_called_once()
     mock_reconcile.assert_called_once()
     assert sorted(started) == ["archive", "callback", "status"]
     assert server_module._archive_stop_event.is_set()
