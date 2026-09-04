@@ -62,9 +62,9 @@ def settings(tmp_path, archive_root, local_root) -> Settings:
     """A Settings instance backed by a throwaway on-disk sqlite database.
 
     Callback settings belong here rather than being assigned onto the object
-    later: `get_settings()` re-reads the config file on every call and builds
-    a fresh Settings, so a mutated instance is invisible to anything that
-    calls it again.
+    later, so the fixture describes one complete configuration. The autouse
+    reset clears the `get_settings()` cache around every test, so nothing
+    leaks between them.
     """
 
     return Settings(

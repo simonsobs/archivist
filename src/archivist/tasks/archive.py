@@ -74,7 +74,10 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
         return False
 
     try:
-        loguru.logger.debug(f"Processing status queue for storage task: {storage_task._archive}")
+        # Not an f-string: this runs on every iteration of a hot loop, and an
+        # f-string is built whether or not DEBUG is enabled. loguru defers the
+        # formatting until it knows the record will be emitted.
+        loguru.logger.debug("Processing status queue for storage task: {}", storage_task._archive.manifest_id)
         if storage_task.future.done():
             loguru.logger.debug(f"Storage task for archive {storage_task._archive.manifest_id} future completed.")
             session = session_maker()

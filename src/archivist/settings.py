@@ -209,6 +209,15 @@ def get_settings() -> "Settings":
     """
     global _settings
 
+    # Return the cached object rather than re-reading the config file. The
+    # background workers call this on every loop iteration, and rebuilding a
+    # BaseSettings means a disk read plus a full pydantic-settings
+    # construction -- pure Python, holding the GIL, starving the storage
+    # threads doing the actual copying. Tests reset `_settings` to None to
+    # force a reload.
+    if _settings is not None:
+        return _settings
+
     try_paths = [
         os.environ.get("ARCHIVIST_CONFIG_PATH", None),
     ]

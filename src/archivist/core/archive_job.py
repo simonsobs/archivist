@@ -61,7 +61,15 @@ class ArchiveJob:
         return self._manifest_id
 
     def __repr__(self):
-        return f"<Archive manifest_id={self._manifest_id} type={self._type}>, <manifest={self._manifest}>, <local_root={self._local_root}>, <archive_root={self._archive_root}>"
+        # Summarise the manifest rather than dumping it: a production manifest
+        # runs to hundreds of entries, and a repr that interpolates all of them
+        # turns any incidental log line into megabytes of string building.
+        entries = self._manifest.get("store_files", []) if self._manifest else []
+        return (
+            f"<ArchiveJob manifest_id={self._manifest_id} type={self._type} "
+            f"entries={len(entries)} local_root={self._local_root} "
+            f"archive_root={self._archive_root}>"
+        )
 
     def _expand_directory(self, src_path, entry):
         """Expand a directory manifest entry into one triple per contained file.
