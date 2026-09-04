@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from archivist.tasks.archive import reconcile_orphaned_archives
+from archivist.tasks.archive import find_orphaned_archives, reconcile_orphaned_archives
 
 from .settings import server_settings
 
@@ -81,9 +81,20 @@ async def startup_shutdown_server(app: FastAPI):
 
     logger.info("Archivist server starting up")
 
-    reconcile_orphaned_archives()
+    # Only the snapshot happens here -- one indexed query. Verification stats
+    # every file of every unfinished archive, which is minutes over network
+    # storage, and uvicorn does not bind its socket until this handler returns.
+    # Doing it inline would mean the port stays closed, and the Librarian's
+    # POSTs are refused rather than queued, for the whole of that window.
+    orphan_ids = find_orphaned_archives()
+    if orphan_ids:
+        logger.info(f"Found {len(orphan_ids)} archive(s) to reconcile; verifying in the background.")
 
-    thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="worker")
+    thread_pool = ThreadPoolExecutor(max_workers=5, thread_name_prefix="worker")
+    # Safe to run alongside the workers because the orphan set was captured
+    # before any of them started: a manifest arriving from here on becomes
+    # `consumed` under a worker and can never be mistaken for an orphan.
+    thread_pool.submit(reconcile_orphaned_archives, orphan_ids)
     thread_pool.submit(_archive_worker_loop)
     thread_pool.submit(_status_worker_loop)
     thread_pool.submit(_callback_worker_loop)

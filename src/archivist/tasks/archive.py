@@ -126,23 +126,61 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
         return True
 
 
+def find_orphaned_archives(session_maker: Callable[[], Session] = get_session) -> list[int]:
+    """
+    Return the ids of archives orphaned by a crash: consumed but never
+    completed.
+
+    Split from the reconciliation itself because this part is a single indexed
+    query and the reconciliation is not. Taking the snapshot before any worker
+    starts is what makes it safe to reconcile in the background: a manifest
+    that arrives afterwards becomes `consumed=True` the moment a worker picks
+    it up, and would otherwise look exactly like an orphan to a concurrent
+    scan -- which would requeue a job that is already being copied.
+    """
+    session = session_maker()
+    try:
+        return [item.id for item in session.query(Archive).filter_by(consumed=True, completed=False).all()]
+    finally:
+        session.close()
+
+
 def reconcile_orphaned_archives(
+    orphan_ids: list[int] | None = None,
     session_maker: Callable[[], Session] = get_session,
 ) -> None:
     """
-    On startup, re-drive archive jobs orphaned by a crash.
+    Re-drive archive jobs orphaned by a crash.
 
     A row that was consumed but never completed lost its in-memory Future when
     the process died. For each such row: verify the destination against the
     manifest; if already satisfied, complete it; otherwise requeue it (up to
     settings.max_archive_retries) so the normal worker loop re-runs the now
     idempotent store(), or fail it once the retry cap is hit.
+
+    Verification stats every file of every unfinished archive, so this is slow
+    -- minutes on a large manifest over network storage. It therefore runs on a
+    worker thread rather than blocking startup, working from `orphan_ids`
+    captured by `find_orphaned_archives` before the workers began. Passing
+    nothing falls back to finding them here, which is only safe when no worker
+    is running.
     """
     settings = get_settings()
-    session = session_maker()
-    try:
-        orphans = session.query(Archive).filter_by(consumed=True, completed=False).all()
-        for item in orphans:
+    if orphan_ids is None:
+        orphan_ids = find_orphaned_archives(session_maker)
+
+    if not orphan_ids:
+        return
+
+    # A session per orphan rather than one for the whole pass: this can run for
+    # minutes, and a transaction held open that long blocks vacuum and shows up
+    # as idle-in-transaction.
+    for orphan_id in orphan_ids:
+        session = session_maker()
+        try:
+            item = session.query(Archive).filter_by(id=orphan_id).first()
+            if item is None:
+                continue
             try:
                 manifest = {
                     "store_files": [
@@ -170,5 +208,5 @@ def reconcile_orphaned_archives(
                     loguru.logger.info(f"Requeued orphan {item.id} (retry {item.retries}).")
             except Exception:  # noqa: BLE001
                 loguru.logger.exception(f"Failed to reconcile orphan {getattr(item, 'manifest_id', '?')}; skipping.")
-    finally:
-        session.close()
+        finally:
+            session.close()

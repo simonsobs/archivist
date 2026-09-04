@@ -70,10 +70,16 @@ def test_lifespan_recovers_orphans_starts_workers_and_stops_them_on_exit():
         mock.patch.object(server_module, "_archive_worker_loop", lambda: started.append("archive")),
         mock.patch.object(server_module, "_status_worker_loop", lambda: started.append("status")),
         mock.patch.object(server_module, "_callback_worker_loop", lambda: started.append("callback")),
+        mock.patch.object(server_module, "find_orphaned_archives", return_value=[7, 9]) as mock_find,
         mock.patch.object(server_module, "reconcile_orphaned_archives") as mock_reconcile,
     ):
         asyncio.run(_run())
 
-    mock_reconcile.assert_called_once()
+    # The snapshot is taken inline, before any worker starts: that ordering is
+    # what stops a newly-dequeued manifest being mistaken for an orphan.
+    mock_find.assert_called_once()
+    # Reconciliation runs on a worker thread, but the lifespan's shutdown waits
+    # for the pool, so by here it has run -- with the ids captured up front.
+    mock_reconcile.assert_called_once_with([7, 9])
     assert sorted(started) == ["archive", "callback", "status"]
     assert server_module._archive_stop_event.is_set()
