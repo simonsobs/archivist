@@ -85,6 +85,17 @@ def process_status_queue(session_maker: Callable[[], Session] = get_session) -> 
                 )
                 if item is None:
                     return True
+
+                # `done()` is True for a future that raised, so the exception
+                # has to be read explicitly. Without this a failed or partial
+                # copy is reported to the Librarian as a success, and the
+                # error is discarded rather than logged.
+                store_error = storage_task.future.exception()
+                if store_error is not None:
+                    loguru.logger.error(f"Archive {storage_task._archive.manifest_id} failed to store: {store_error!r}")
+                    item.fail(session)
+                    return True
+
                 try:
                     item.archive_path = storage_task._archive.archive_root
                     if item.manifest.librarian_name == get_settings().cli_librarian_name:

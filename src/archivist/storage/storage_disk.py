@@ -44,15 +44,35 @@ class StorageDisk(Storage):
         return dst_path.is_file() and dst_path.stat().st_size == expected_size
 
     def _copy_files(self, file_list: list[tuple[Path, Path, int]]) -> None:
+        """Copy every entry, then raise if any of them failed.
+
+        One unreadable file does not abandon the rest of the manifest: a
+        manifest can be a terabyte across hundreds of entries, and stopping at
+        the first error throws away every copy that would have succeeded after
+        it. Whatever did copy stays on disk and is skipped on the next run;
+        the raise is what stops the archive being reported as complete.
+        """
+        errors: list[tuple[Path, Exception]] = []
+
         for src_path, dst_path, expected_size in file_list:
             if self._entry_satisfied(dst_path, expected_size):
                 logger.debug(f"Skipping already-present {dst_path} (size {expected_size})")
                 continue
-            os.makedirs(dst_path.parent, exist_ok=True)
-            if os.path.isdir(src_path):
-                shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src_path, dst_path)
+            try:
+                os.makedirs(dst_path.parent, exist_ok=True)
+                if os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src_path, dst_path)
+            except OSError as err:
+                logger.exception(f"Failed to copy {src_path} -> {dst_path}")
+                errors.append((src_path, err))
+
+        if errors:
+            first_path, first_error = errors[0]
+            raise RuntimeError(
+                f"{len(errors)} of {len(file_list)} entries failed to copy; first was {first_path}: {first_error!r}"
+            )
 
     def _store(self, archive: ArchiveJob) -> "StorageDisk":
         """Copy the archive's files into a per-manifest subdirectory of archive_root."""

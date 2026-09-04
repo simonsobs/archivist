@@ -194,6 +194,49 @@ def resend_callback(ctx, manifest_id):
 
 
 @main.command()
+@click.option("--manifest-id", type=str, required=True, help="The manifest whose archive should be stored again")
+@click.pass_context
+def requeue_archive(ctx, manifest_id):
+    """Return a completed archive to the pending queue so its files are stored again.
+
+    `resend-callback` only resets callback bookkeeping on a row that is already
+    complete; this re-drives the storage itself, for an archive that was marked
+    complete without its files actually being there.
+
+    Clearing `consumed` is enough for the running server's `dequeue()` to pick
+    the row up on its next worker iteration, so no restart is needed. Entries
+    already present at the right size are skipped, so a partial archive resumes
+    instead of copying everything again.
+    """
+
+    from archivist.database import get_session
+    from archivist.orm.archive import Archive
+
+    session = get_session()
+    try:
+        item = session.query(Archive).filter_by(manifest_id=manifest_id).first()
+        if item is None:
+            click.secho("[ERROR]", fg="red", nl=False, err=True)
+            click.echo(f" No archive for manifest {manifest_id}", err=True)
+            sys.exit(1)
+
+        # Deliberately not Archive.requeue(): that increments `retries` and
+        # leaves `completed` set, which is right for crash recovery and wrong
+        # for an operator re-drive.
+        item.consumed = False
+        item.consumed_time = None
+        item.completed = False
+        item.completed_time = None
+        item.failed = False
+        item.retries = 0
+        session.commit()
+
+        click.echo(f"Archive {item.id} ({manifest_id}) requeued; the server will pick it up shortly.")
+    finally:
+        session.close()
+
+
+@main.command()
 @click.pass_context
 def start_server(ctx):
     """Command to check the status of the archivist."""
