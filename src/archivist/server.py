@@ -15,17 +15,13 @@ from .settings import server_settings
 _archive_stop_event = threading.Event()
 
 
-# Idle backoff for the archive and status workers. Both used to spin with no
-# sleep, which pegs a core and -- worse -- holds the GIL against the storage
-# threads doing the actual copying, throttling every archive in flight.
-_WORKER_IDLE_SECONDS = 1.0
-
-
 def _archive_worker_loop():
     from loguru import logger
 
+    from .settings import get_settings
     from .tasks.archive import start_archive
 
+    poll_interval = get_settings().worker_poll_interval_seconds
     while not _archive_stop_event.is_set():
         try:
             did_work = start_archive(librarian_name=server_settings.name)
@@ -35,14 +31,16 @@ def _archive_worker_loop():
         # Only pause when the queue was empty, so a backlog still drains at
         # full speed.
         if not did_work:
-            _archive_stop_event.wait(_WORKER_IDLE_SECONDS)
+            _archive_stop_event.wait(poll_interval)
 
 
 def _status_worker_loop():
     from loguru import logger
 
+    from .settings import get_settings
     from .tasks.archive import process_status_queue
 
+    poll_interval = get_settings().worker_poll_interval_seconds
     while not _archive_stop_event.is_set():
         try:
             process_status_queue()
@@ -51,7 +49,7 @@ def _status_worker_loop():
         # Always pause: this loop polls futures that take minutes to hours, and
         # it reports "handled" even when it merely re-queued an unfinished one,
         # so there is no busy case worth spinning for.
-        _archive_stop_event.wait(_WORKER_IDLE_SECONDS)
+        _archive_stop_event.wait(poll_interval)
 
 
 def _callback_worker_loop():
