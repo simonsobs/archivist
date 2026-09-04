@@ -98,11 +98,37 @@ class StorageDisk(Storage):
                         logger.error(f"Failed to copy {src_path} -> {dst_path}: {error!r}")
                         errors.append((src_path, error))
 
+        self._restore_directory_times(file_list)
+
         if errors:
             first_path, first_error = errors[0]
             raise RuntimeError(
                 f"{len(errors)} of {len(file_list)} entries failed to copy; first was {first_path}: {first_error!r}"
             )
+
+    @staticmethod
+    def _restore_directory_times(file_list: list[tuple[Path, Path, int]]) -> None:
+        """Copy each destination directory's timestamps from its source.
+
+        `copy2` preserves a file's own mtime, but the directories holding them
+        are created by `os.makedirs`, which stamps them with the time of the
+        copy. This has to run after every file is written, because writing into
+        a directory updates that directory's mtime again.
+
+        Deepest first, so a parent is stamped after the children that were
+        created inside it.
+
+        Failures here are logged and not collected as errors: the archived data
+        is intact either way, and losing a directory's mtime is not worth
+        failing a terabyte transfer over.
+        """
+        pairs = {file_dst.parent: file_src.parent for file_src, file_dst, _ in file_list}
+
+        for dst_dir in sorted(pairs, key=lambda path: len(path.parts), reverse=True):
+            try:
+                shutil.copystat(pairs[dst_dir], dst_dir)
+            except OSError as err:
+                logger.warning(f"Could not restore timestamps on {dst_dir}: {err!r}")
 
     def _store(self, archive: ArchiveJob) -> "StorageDisk":
         """Copy the archive's files into a per-manifest subdirectory of archive_root."""
