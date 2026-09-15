@@ -119,6 +119,25 @@ def test_disk_store_fails_after_copy_attempts_exhausted(use_settings, local_root
     assert copy2.call_count == use_settings.copy_attempts
 
 
+@pytest.mark.parametrize("existing,copied", [("content", False), ("con", True)], ids=["complete", "truncated"])
+def test_disk_store_skips_files_already_present_at_the_expected_size(
+    use_settings, local_root, archive_root, existing, copied
+):
+    """What makes a requeue or restart resume, rather than copy a whole manifest again."""
+
+    source = local_root / "file.txt"
+    source.write_text("content")  # 7 bytes
+    # A truncated file is what a crash mid-copy leaves behind; it must not count as done.
+    (archive_root / "file.txt").write_text(existing)
+
+    storage = StorageDisk(settings=use_settings)
+    with mock.patch("archivist.storage.storage_disk.shutil.copy2", wraps=shutil.copy2) as copy2:
+        storage.store(_archive_for(source, local_root, archive_root, size=7)).future.result(timeout=5)
+
+    assert copy2.called is copied
+    assert (archive_root / "file.txt").read_text() == "content"
+
+
 def test_disk_verify_archive(use_settings, local_root, archive_root):
     source = local_root / "file.txt"
     source.write_text("content")  # 7 bytes

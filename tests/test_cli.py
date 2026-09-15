@@ -8,6 +8,7 @@ The only real logic here is turning a source path into a manifest; the rest
 is click/requests plumbing, so that's all this covers.
 """
 
+import datetime
 import hashlib
 import os
 from pathlib import Path
@@ -164,6 +165,39 @@ def test_resend_callback_only_touches_completed_archives(config_path, db_session
     if completed is not None:
         db_session.expire_all()
         assert item.callback_next_retry is None
+
+
+def test_requeue_archive_returns_a_finished_archive_to_the_queue(config_path, db_session, archive_root):
+    """Operator re-drive for an archive that finished without all of its files landing."""
+
+    now = datetime.datetime.now(datetime.UTC)
+    item = make_archive_item(db_session, id="m1", archive_root=str(archive_root))
+    item.consumed = True
+    item.consumed_time = now
+    item.completed = True
+    item.completed_time = now
+    item.failed = True
+    item.retries = 2
+    db_session.commit()
+
+    result = CliRunner().invoke(main, ["-c", str(config_path), "requeue-archive", "--manifest-id", "m1"])
+
+    assert result.exit_code == 0
+    assert "requeued" in result.output
+
+    db_session.expire_all()
+    assert not item.consumed and item.consumed_time is None
+    assert not item.completed and item.completed_time is None
+    assert not item.failed
+    # Reset, unlike crash recovery's requeue: an operator re-drive starts the retry budget over.
+    assert item.retries == 0
+
+
+def test_requeue_archive_rejects_an_unknown_manifest(config_path, db_session):
+    result = CliRunner().invoke(main, ["-c", str(config_path), "requeue-archive", "--manifest-id", "nope"])
+
+    assert result.exit_code == 1
+    assert "No archive for manifest nope" in result.output
 
 
 def test_start_server_hands_the_settings_to_uvicorn(config_path, settings):
