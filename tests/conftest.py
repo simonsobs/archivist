@@ -87,6 +87,7 @@ def settings(tmp_path, archive_root, local_root) -> Settings:
             "__cli__": ClientConfig(username=CLI_CREDENTIALS[0], password=CLI_CREDENTIALS[1]),
         },
         callback_poll_interval_seconds=0.01,  # keep the callback worker's idle wait out of test runtime
+        copy_retry_base_seconds=0,  # keep copy retry backoff out of test runtime
     )
 
 

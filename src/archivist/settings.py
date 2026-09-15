@@ -138,6 +138,13 @@ class Settings(BaseSettings):
     # concurrency only causes seeking.
     copy_threads: int = 8
 
+    # Attempts per file before a copy error counts as a failure.  Minimum 1, which means no retries.
+    copy_attempts: int = 3
+
+    # Delay before retrying a failed file copy, doubling each attempt
+    # (5s, then 10s).
+    copy_retry_base_seconds: float = 5.0
+
     # How long the archive and status workers idle between polls. These loops
     # are pure Python, so spinning without a pause holds the GIL against the
     # storage threads doing the copying and throttles every archive in flight.

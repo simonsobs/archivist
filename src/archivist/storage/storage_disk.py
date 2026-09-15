@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -45,19 +46,33 @@ class StorageDisk(Storage):
 
     def _copy_one(self, src_path: Path, dst_path: Path, expected_size: int) -> bool:
         """Copy a single entry; True if copied, False if already satisfied.
+        In case of a NFS error, retry to copy the file a few times and then fail.
 
         Raises whatever the filesystem raises -- the caller collects failures.
         """
+
         if self._entry_satisfied(dst_path, expected_size):
             logger.debug("Skipping already-present {} (size {})", dst_path, expected_size)
             return False
 
-        os.makedirs(dst_path.parent, exist_ok=True)
-        if os.path.isdir(src_path):
-            shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-        else:
-            shutil.copy2(src_path, dst_path)
-        return True
+        for attempt in range(1, self._settings.copy_attempts + 1):
+            try:
+                os.makedirs(dst_path.parent, exist_ok=True)
+                # Inside the retry: isdir() returns False when stat itself
+                # errors, so a flaky stat can send a file down the wrong path.
+                if os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src_path, dst_path)
+                return True
+            except OSError as err:
+                if attempt == self._settings.copy_attempts:
+                    raise
+                delay = self._settings.copy_retry_base_seconds * 2 ** (attempt - 1)
+                logger.warning(
+                    f"Copy of {src_path} failed on attempt {attempt}/{self._settings.copy_attempts} ({err!r}); retrying in {delay:.0f}s"
+                )
+                time.sleep(delay)
 
     def _copy_files(self, file_list: list[tuple[Path, Path, int]]) -> None:
         """Copy every entry, then raise if any of them failed.
