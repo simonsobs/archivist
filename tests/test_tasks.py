@@ -116,6 +116,15 @@ def test_process_status_queue_marks_rows_completed_or_failed(db_session, enqueue
     assert item.completed
     assert item.failed
 
+    # A copy that raised still leaves its future `done()`; it must fail, not complete.
+    enqueue_manifest(source, id="copy-raised")
+    with mock.patch("archivist.storage.storage_disk.shutil.copy2", side_effect=OSError(5, "Input/output error")):
+        start_archive(librarian_name="test-librarian")
+        item = _drain_until_completed(db_session, "copy-raised")
+
+    assert item.completed
+    assert item.failed
+
 
 def test_completion_records_whether_a_callback_is_owed(db_session, use_settings, enqueue_manifest, local_root):
     """Completing a job decides the callback: real librarians are owed one, CLI jobs are not."""

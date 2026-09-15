@@ -1,5 +1,8 @@
 # Copyright (c) 2025-2026 Simons Observatory.
 # Full license can be found in the top level "LICENSE" file.
+import shutil
+from unittest import mock
+
 import pytest
 from conftest import make_manifest_entry
 
@@ -76,6 +79,63 @@ def test_disk_store_archive_directory_trees(use_settings, local_root, archive_ro
     storage.store(_archive_for(source_dir, local_root, archive_root)).future.result(timeout=5)
 
     assert (archive_root / "adir" / "inner.txt").read_text() == "inner-content"
+
+
+def test_disk_store_retries_transient_copy_errors(use_settings, local_root, archive_root):
+    """Network storage returns EIO under load for files that read fine moments later."""
+
+    source = local_root / "file.txt"
+    source.write_text("content")
+    real_copy2 = shutil.copy2
+    calls = []
+
+    def _flaky_copy2(src, dst):
+        calls.append(src)
+        if len(calls) == 1:
+            raise OSError(5, "Input/output error")
+        return real_copy2(src, dst)
+
+    storage = StorageDisk(settings=use_settings)
+    with mock.patch("archivist.storage.storage_disk.shutil.copy2", side_effect=_flaky_copy2):
+        storage.store(_archive_for(source, local_root, archive_root)).future.result(timeout=5)
+
+    assert len(calls) == 2
+    assert (archive_root / "file.txt").read_text() == "content"
+
+
+def test_disk_store_fails_after_copy_attempts_exhausted(use_settings, local_root, archive_root):
+    source = local_root / "file.txt"
+    source.write_text("content")
+
+    storage = StorageDisk(settings=use_settings)
+    with mock.patch(
+        "archivist.storage.storage_disk.shutil.copy2", side_effect=OSError(5, "Input/output error")
+    ) as copy2:
+        # The errno has to survive into the manifest's failure message: it is
+        # what tells a transient storage error apart from a real problem.
+        with pytest.raises(RuntimeError, match="Input/output error"):
+            storage.store(_archive_for(source, local_root, archive_root)).future.result(timeout=5)
+
+    assert copy2.call_count == use_settings.copy_attempts
+
+
+@pytest.mark.parametrize("existing,copied", [("content", False), ("con", True)], ids=["complete", "truncated"])
+def test_disk_store_skips_files_already_present_at_the_expected_size(
+    use_settings, local_root, archive_root, existing, copied
+):
+    """What makes a requeue or restart resume, rather than copy a whole manifest again."""
+
+    source = local_root / "file.txt"
+    source.write_text("content")  # 7 bytes
+    # A truncated file is what a crash mid-copy leaves behind; it must not count as done.
+    (archive_root / "file.txt").write_text(existing)
+
+    storage = StorageDisk(settings=use_settings)
+    with mock.patch("archivist.storage.storage_disk.shutil.copy2", wraps=shutil.copy2) as copy2:
+        storage.store(_archive_for(source, local_root, archive_root, size=7)).future.result(timeout=5)
+
+    assert copy2.called is copied
+    assert (archive_root / "file.txt").read_text() == "content"
 
 
 def test_disk_verify_archive(use_settings, local_root, archive_root):

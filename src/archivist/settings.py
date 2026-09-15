@@ -126,7 +126,31 @@ class Settings(BaseSettings):
     checksum_timeout: datetime.timedelta = datetime.timedelta(days=1)
 
     # Number of background threads used to perform filesystem storage copies.
+    # This sizes the pool that runs whole archive *jobs*, not the files within
+    # one job -- see copy_threads for that.
     storage_threads: int = 4
+
+    # Concurrent file copies within a single archive job. Copying to network
+    # storage is latency-bound rather than bandwidth-bound: each file costs a
+    # round trip to open, write, commit and stat, and a single stream spends
+    # most of its time waiting. Concurrent streams hide that latency. Set to 1
+    # for serial copying, which is the right choice for local disk where
+    # concurrency only causes seeking.
+    copy_threads: int = 8
+
+    # Attempts per file before a copy error counts as a failure.  Minimum 1, which means no retries.
+    copy_attempts: int = 3
+
+    # Delay before retrying a failed file copy, doubling each attempt
+    # (5s, then 10s).
+    copy_retry_base_seconds: float = 5.0
+
+    # How long the archive and status workers idle between polls. These loops
+    # are pure Python, so spinning without a pause holds the GIL against the
+    # storage threads doing the copying and throttles every archive in flight.
+    # Lower it for snappier pickup of new manifests, raise it to leave more
+    # room for large transfers.
+    worker_poll_interval_seconds: float = 1.0
 
     # Reserved librarian name used by the CLI archive path. Jobs submitted
     # under this name never trigger a Librarian callback.
@@ -208,6 +232,15 @@ def get_settings() -> "Settings":
     Dependency to get the application settings.
     """
     global _settings
+
+    # Return the cached object rather than re-reading the config file. The
+    # background workers call this on every loop iteration, and rebuilding a
+    # BaseSettings means a disk read plus a full pydantic-settings
+    # construction -- pure Python, holding the GIL, starving the storage
+    # threads doing the actual copying. Tests reset `_settings` to None to
+    # force a reload.
+    if _settings is not None:
+        return _settings
 
     try_paths = [
         os.environ.get("ARCHIVIST_CONFIG_PATH", None),

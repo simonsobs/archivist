@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from archivist.tasks.archive import reconcile_orphaned_archives
+from archivist.tasks.archive import find_orphaned_archives, reconcile_orphaned_archives
 
 from .settings import server_settings
 
@@ -18,25 +18,38 @@ _archive_stop_event = threading.Event()
 def _archive_worker_loop():
     from loguru import logger
 
+    from .settings import get_settings
     from .tasks.archive import start_archive
 
+    poll_interval = get_settings().worker_poll_interval_seconds
     while not _archive_stop_event.is_set():
         try:
-            start_archive(librarian_name=server_settings.name)
-        except Exception as ex:  # noqa: BLE001
+            did_work = start_archive(librarian_name=server_settings.name)
+        except Exception:  # noqa: BLE001
             logger.exception("Archive worker iteration failed")
+            did_work = False
+        # Only pause when the queue was empty, so a backlog still drains at
+        # full speed.
+        if not did_work:
+            _archive_stop_event.wait(poll_interval)
 
 
 def _status_worker_loop():
     from loguru import logger
 
+    from .settings import get_settings
     from .tasks.archive import process_status_queue
 
+    poll_interval = get_settings().worker_poll_interval_seconds
     while not _archive_stop_event.is_set():
         try:
             process_status_queue()
         except Exception:  # noqa: BLE001
             logger.exception("Archive worker iteration failed")
+        # Always pause: this loop polls futures that take minutes to hours, and
+        # it reports "handled" even when it merely re-queued an unfinished one,
+        # so there is no busy case worth spinning for.
+        _archive_stop_event.wait(poll_interval)
 
 
 def _callback_worker_loop():
@@ -68,9 +81,20 @@ async def startup_shutdown_server(app: FastAPI):
 
     logger.info("Archivist server starting up")
 
-    reconcile_orphaned_archives()
+    # Only the snapshot happens here -- one indexed query. Verification stats
+    # every file of every unfinished archive, which is minutes over network
+    # storage, and uvicorn does not bind its socket until this handler returns.
+    # Doing it inline would mean the port stays closed, and the Librarian's
+    # POSTs are refused rather than queued, for the whole of that window.
+    orphan_ids = find_orphaned_archives()
+    if orphan_ids:
+        logger.info(f"Found {len(orphan_ids)} archive(s) to reconcile; verifying in the background.")
 
-    thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="worker")
+    thread_pool = ThreadPoolExecutor(max_workers=5, thread_name_prefix="worker")
+    # Safe to run alongside the workers because the orphan set was captured
+    # before any of them started: a manifest arriving from here on becomes
+    # `consumed` under a worker and can never be mistaken for an orphan.
+    thread_pool.submit(reconcile_orphaned_archives, orphan_ids)
     thread_pool.submit(_archive_worker_loop)
     thread_pool.submit(_status_worker_loop)
     thread_pool.submit(_callback_worker_loop)

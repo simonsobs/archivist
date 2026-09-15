@@ -1,6 +1,7 @@
 import os
 import shutil
-from concurrent.futures import Future, ThreadPoolExecutor
+import time
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from loguru import logger
@@ -43,16 +44,106 @@ class StorageDisk(Storage):
         """True if dst_path exists as a regular file of the expected size."""
         return dst_path.is_file() and dst_path.stat().st_size == expected_size
 
+    def _copy_one(self, src_path: Path, dst_path: Path, expected_size: int) -> bool:
+        """Copy a single entry; True if copied, False if already satisfied.
+        In case of a NFS error, retry to copy the file a few times and then fail.
+
+        Raises whatever the filesystem raises -- the caller collects failures.
+        """
+
+        if self._entry_satisfied(dst_path, expected_size):
+            logger.debug("Skipping already-present {} (size {})", dst_path, expected_size)
+            return False
+
+        for attempt in range(1, self._settings.copy_attempts + 1):
+            try:
+                os.makedirs(dst_path.parent, exist_ok=True)
+                # Inside the retry: isdir() returns False when stat itself
+                # errors, so a flaky stat can send a file down the wrong path.
+                if os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src_path, dst_path)
+                return True
+            except OSError as err:
+                if attempt == self._settings.copy_attempts:
+                    raise
+                delay = self._settings.copy_retry_base_seconds * 2 ** (attempt - 1)
+                logger.warning(
+                    f"Copy of {src_path} failed on attempt {attempt}/{self._settings.copy_attempts} ({err!r}); retrying in {delay:.0f}s"
+                )
+                time.sleep(delay)
+
     def _copy_files(self, file_list: list[tuple[Path, Path, int]]) -> None:
-        for src_path, dst_path, expected_size in file_list:
-            if self._entry_satisfied(dst_path, expected_size):
-                logger.debug(f"Skipping already-present {dst_path} (size {expected_size})")
-                continue
-            os.makedirs(dst_path.parent, exist_ok=True)
-            if os.path.isdir(src_path):
-                shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src_path, dst_path)
+        """Copy every entry, then raise if any of them failed.
+
+        Entries are copied concurrently. Archive storage is typically remote
+        (NFS), where a file's cost is dominated by round trips to open, write,
+        commit and stat it rather than by bandwidth, so a single stream spends
+        most of its time waiting. `settings.copy_threads` streams overlap that
+        latency; set it to 1 for local disk, where concurrency only causes
+        seeking.
+
+        One unreadable file does not abandon the rest of the manifest: a
+        manifest can be a terabyte across hundreds of entries, and stopping at
+        the first error throws away every copy that would have succeeded after
+        it. Whatever did copy stays on disk and is skipped on the next run;
+        the raise is what stops the archive being reported as complete.
+        """
+        errors: list[tuple[Path, BaseException]] = []
+        workers = self._settings.copy_threads if self._settings else 8
+
+        if workers <= 1:
+            for src_path, dst_path, expected_size in file_list:
+                try:
+                    self._copy_one(src_path, dst_path, expected_size)
+                except OSError as err:
+                    logger.exception(f"Failed to copy {src_path} -> {dst_path}")
+                    errors.append((src_path, err))
+        else:
+            # A pool of its own rather than StorageDisk._executor: this method
+            # is itself running on that shared pool, so taking slots from it
+            # for the children deadlocks once enough archives are in flight.
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="copy") as pool:
+                futures = {pool.submit(self._copy_one, src, dst, size): (src, dst) for src, dst, size in file_list}
+                for future in as_completed(futures):
+                    src_path, dst_path = futures[future]
+                    error = future.exception()
+                    if error is not None:
+                        logger.error(f"Failed to copy {src_path} -> {dst_path}: {error!r}")
+                        errors.append((src_path, error))
+
+        self._restore_directory_times(file_list)
+
+        if errors:
+            first_path, first_error = errors[0]
+            raise RuntimeError(
+                f"{len(errors)} of {len(file_list)} entries failed to copy; first was {first_path}: {first_error!r}"
+            )
+
+    @staticmethod
+    def _restore_directory_times(file_list: list[tuple[Path, Path, int]]) -> None:
+        """Copy each destination directory's timestamps from its source.
+
+        `copy2` preserves a file's own mtime, but the directories holding them
+        are created by `os.makedirs`, which stamps them with the time of the
+        copy. This has to run after every file is written, because writing into
+        a directory updates that directory's mtime again.
+
+        Deepest first, so a parent is stamped after the children that were
+        created inside it.
+
+        Failures here are logged and not collected as errors: the archived data
+        is intact either way, and losing a directory's mtime is not worth
+        failing a terabyte transfer over.
+        """
+        pairs = {file_dst.parent: file_src.parent for file_src, file_dst, _ in file_list}
+
+        for dst_dir in sorted(pairs, key=lambda path: len(path.parts), reverse=True):
+            try:
+                shutil.copystat(pairs[dst_dir], dst_dir)
+            except OSError as err:
+                logger.warning(f"Could not restore timestamps on {dst_dir}: {err!r}")
 
     def _store(self, archive: ArchiveJob) -> "StorageDisk":
         """Copy the archive's files into a per-manifest subdirectory of archive_root."""
