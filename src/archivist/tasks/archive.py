@@ -210,3 +210,38 @@ def reconcile_orphaned_archives(
                 loguru.logger.exception(f"Failed to reconcile orphan {getattr(item, 'manifest_id', '?')}; skipping.")
         finally:
             session.close()
+
+
+def retry_failed_archives(
+    session_maker: Callable[[], Session] = get_session,
+) -> bool:
+    """
+    Re-drive archive jobs that have failed but not exceeded the auto_retry limit.
+    """
+
+    settings = get_settings()
+
+    session = session_maker()
+
+    failed_archives = (
+        session.query(Archive)
+        .filter(Archive.failed.is_(True), Archive.auto_retries < settings.auto_retry_max_attempts)
+        .all()
+    )
+
+    if not failed_archives:
+        session.close()
+        return False
+
+    for failed_archive in failed_archives:
+        failed_archive.consumed = False
+        failed_archive.consumed_time = None
+        failed_archive.completed = False
+        failed_archive.completed_time = None
+        failed_archive.failed = False
+        failed_archive.auto_retries += 1
+        loguru.logger.info(f"Retrying failed archive {failed_archive.id} (auto_retry {failed_archive.auto_retries}).")
+        session.commit()
+
+    session.close()
+    return True

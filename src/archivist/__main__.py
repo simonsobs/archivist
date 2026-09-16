@@ -229,6 +229,7 @@ def requeue_archive(ctx, manifest_id):
         item.completed_time = None
         item.failed = False
         item.retries = 0
+        item.auto_retries = 0
         session.commit()
 
         click.echo(f"Archive {item.id} ({manifest_id}) requeued; the server will pick it up shortly.")

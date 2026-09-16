@@ -71,6 +71,24 @@ def _callback_worker_loop():
             _archive_stop_event.wait(poll_interval)
 
 
+def _retry_worker_loop():
+    from loguru import logger
+
+    from .settings import get_settings
+    from .tasks.archive import retry_failed_archives
+
+    poll_interval = get_settings().auto_retry_poll_interval_seconds
+    while not _archive_stop_event.is_set():
+        try:
+            did_work = retry_failed_archives()
+        except Exception:  # noqa: BLE001
+            logger.exception("Retry worker iteration failed")
+            did_work = False
+        # The retry queue is backoff-driven, so idle between polls instead
+        # of spinning when there is nothing due.
+        _archive_stop_event.wait(poll_interval)
+
+
 @asynccontextmanager
 async def startup_shutdown_server(app: FastAPI):
     """
@@ -98,6 +116,8 @@ async def startup_shutdown_server(app: FastAPI):
     thread_pool.submit(_archive_worker_loop)
     thread_pool.submit(_status_worker_loop)
     thread_pool.submit(_callback_worker_loop)
+    if server_settings.auto_retry_enabled:
+        thread_pool.submit(_retry_worker_loop)
     yield
 
     logger.info("Archivist server shutting down")

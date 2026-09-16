@@ -145,6 +145,12 @@ class Settings(BaseSettings):
     # (5s, then 10s).
     copy_retry_base_seconds: float = 5.0
 
+    # Auto retry options for failed archives. If enabled, the archivist will
+    # automatically retry failed archives up to a maximum number of attempts.
+    auto_retry_enabled: bool = True
+    auto_retry_max_attempts: int = 3
+    auto_retry_poll_interval_seconds: float = 86400.0  # 1 day
+
     # How long the archive and status workers idle between polls. These loops
     # are pure Python, so spinning without a pause holds the GIL against the
     # storage threads doing the copying and throttles every archive in flight.

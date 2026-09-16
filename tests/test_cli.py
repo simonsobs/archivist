@@ -178,6 +178,7 @@ def test_requeue_archive_returns_a_finished_archive_to_the_queue(config_path, db
     item.completed_time = now
     item.failed = True
     item.retries = 2
+    item.auto_retries = 3
     db_session.commit()
 
     result = CliRunner().invoke(main, ["-c", str(config_path), "requeue-archive", "--manifest-id", "m1"])
@@ -189,8 +190,10 @@ def test_requeue_archive_returns_a_finished_archive_to_the_queue(config_path, db
     assert not item.consumed and item.consumed_time is None
     assert not item.completed and item.completed_time is None
     assert not item.failed
-    # Reset, unlike crash recovery's requeue: an operator re-drive starts the retry budget over.
+    # Reset, unlike crash recovery's requeue: an operator re-drive starts both
+    # retry budgets over.
     assert item.retries == 0
+    assert item.auto_retries == 0
 
 
 def test_requeue_archive_rejects_an_unknown_manifest(config_path, db_session):
