@@ -30,8 +30,12 @@ file is present it is marked completed, otherwise it is queued again, up to
 ``max_archive_retries`` times.
 
 A job fails when any file still cannot be copied after ``copy_attempts``. The error
-is logged as ``Archive <manifest_id> failed to store``. No callback is sent for a
-failed job; fix the cause and run ``requeue-archive``.
+is logged as ``Archive <manifest_id> failed to store``, and no callback is sent.
+
+Failed jobs are retried automatically every
+``auto_retry_poll_interval_seconds``, up to ``auto_retry_max_attempts`` times.
+Once a job has used those attempts it stays failed until an operator runs
+``requeue-archive``, which clears the automatic budget.
 
 Checking State
 --------------

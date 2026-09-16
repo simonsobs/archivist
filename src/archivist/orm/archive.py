@@ -34,6 +34,8 @@ class Archive(db.Base):
     "The time this job was added to the queue."
     retries = db.Column(db.Integer, nullable=False, default=0)
     "The number of times this job has been attempted."
+    auto_retries = db.Column(db.Integer, nullable=False, default=0)
+    "The number of times this job has been attempted automatically."
 
     manifest = db.relationship("Manifest", back_populates="archive")
     "The manifest being archived."

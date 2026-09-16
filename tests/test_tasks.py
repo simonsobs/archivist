@@ -9,7 +9,12 @@ from conftest import make_archive_item, make_manifest_entry, make_orphan
 
 from archivist.orm import Archive
 from archivist.queue import Queue, get_status_queue
-from archivist.tasks.archive import process_status_queue, reconcile_orphaned_archives, start_archive
+from archivist.tasks.archive import (
+    process_status_queue,
+    reconcile_orphaned_archives,
+    retry_failed_archives,
+    start_archive,
+)
 
 
 class _FakeStorageTask:
@@ -203,3 +208,38 @@ def test_reconcile_orphaned_archives(db_session, use_settings, archive_root, loc
 
     assert max_retries_archive.failed
     assert max_retries_archive.retries == use_settings.max_archive_retries
+
+
+def test_retry_failed_archives(db_session, use_settings, archive_root):
+    """Failed archives are re-driven until their automatic budget runs out."""
+
+    def _finished(id, failed, auto_retries=0):
+        item = make_archive_item(db_session, id=id, archive_root=str(archive_root))
+        item.consumed = True
+        item.completed = True
+        item.failed = failed
+        item.auto_retries = auto_retries
+        db_session.commit()
+        return item
+
+    retryable = _finished("retryable", failed=True)
+    exhausted = _finished("exhausted", failed=True, auto_retries=use_settings.auto_retry_max_attempts)
+    succeeded = _finished("succeeded", failed=False)
+
+    assert retry_failed_archives() is True
+
+    db_session.expire_all()
+
+    assert not retryable.failed
+    assert not retryable.consumed and retryable.consumed_time is None
+    assert not retryable.completed and retryable.completed_time is None
+    assert retryable.auto_retries == 1
+    # Crash recovery keeps its own budget; only the automatic one is spent.
+    assert retryable.retries == 0
+
+    assert exhausted.failed
+    assert exhausted.auto_retries == use_settings.auto_retry_max_attempts
+
+    assert succeeded.completed and not succeeded.failed
+
+    assert retry_failed_archives() is False

@@ -44,6 +44,13 @@ The configuration variables are as follows:
   * ``worker_poll_interval_seconds``: How often idle workers check for new work.
   * ``max_archive_retries``: Times an interrupted job is retried on restart before
     it is marked failed.
+- Failed archive retries:
+
+  * ``auto_retry_enabled``: Retry failed archives automatically (default ``true``).
+  * ``auto_retry_max_attempts``: Automatic retries per archive before it is left
+    failed.
+  * ``auto_retry_poll_interval_seconds``: How often failed archives are retried.
+    The first pass runs at startup.
 - Librarian settings (see :doc:`Librarians`):
 
   * ``clients``: Librarians allowed to submit manifests, and their credentials.
