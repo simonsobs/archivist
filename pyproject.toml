@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=80", "setuptools-scm>=8"]
+requires = ["setuptools>=84.2.1", "setuptools-scm>=10.3.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -24,10 +24,10 @@ dependencies = [
     "sqlalchemy-utils",
     "loguru",
     "uvicorn",
-    "requests>=2.32.5",
-    "alembic>=1.18.5",
+    "requests>=2.34.2",
+    "alembic>=1.20.1",
     "psycopg[binary,pool]",
-    "psycopg2>=2.9.12",
+    "psycopg2>=2.9.13",
 ]
 
 [project.urls]
@@ -38,16 +38,16 @@ write_to = "src/archivist/_version.py"
 
 [dependency-groups]
 dev = [
-    "coverage>=7.10.7",
-    "coveralls>=4.0.1",
+    "coverage>=7.17.0",
+    "coveralls>=4.1.0",
     "httpx>=0.28.1",
-    "ipython>=9.15.0",
-    "isort>=6.1.0",
-    "pre-commit>=4.3.0",
-    "pytest>=8.4.2",
+    "ipython>=9.18.0",
+    "isort>=9.0.2",
+    "pre-commit>=4.7.0",
+    "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "pytest-random-order>=1.2.0",
-    "ruff>=0.15.17",
+    "ruff>=0.17.3",
 ]
 
 [project.scripts]
